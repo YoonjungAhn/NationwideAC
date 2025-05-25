@@ -1,3 +1,20 @@
+## Table of Contents
+
+- [Setup Instructions](#setup-instructions)
+- [Repository Contents](#repository-contents)
+  - [I. Data Preparation and Modeling](#i-data-preparation-and-modeling)
+    - [Dataintegration_ACestimation.Rmd](#1-dataintegration_acestimationrmd)
+    - [Yes_ACesimtation_HPC.py](#2-yes_acesimtation_hpcpy)
+    - [Alltype_ACesimtation_HPC.py](#3-alltype_acesimtation_hpcpy)
+  - [II. Validation](#ii-validation)
+    - [Comaprison_analysis.py](#1-comaprison_analysispy)
+  - [III. Figures](#iii-figures)
+    - [sudo_rural_urban_ACmap.Rmd](#1-sudo_rural_urban_acmaprmd)
+    - [ResultACmapping.py](#2-resultacmappingpy)
+  - [IV. Data Creation](#iv-data-creation)
+    - [cleaned_AC_to_county_zip.py](#1-cleaned_ac_to_county_zippy)
+
+
 # Nationwide AC Project
 
 This repository contains code and documentation for estimating air conditioning prevalence using various data sources and methodologies.
@@ -78,7 +95,7 @@ A Python script for comparing AC estimation outputs across different modeling ap
 - Visualizes model comparison with summary statistics or graphs
 - Designed for reproducible model evaluation
 
-# III. Figures
+## III. Figures
 ### 1. `sudo_rural_urban_ACmap.Rmd`
 An R Markdown document for visualizing rural and urban disparities in AC availability using statistical maps. It:
 - Loads spatial and model output data
@@ -92,7 +109,7 @@ Script for generating final AC mapping visualizations. It:
 - Produces choropleth maps by county or ZIP code
 - Utilizes libraries like `geopandas`, `matplotlib`, and `contextily`
 
-# IV. Data creation
+## IV. Data creation
 ### 1. `cleaned_AC_to_county_zip.py`
 A data processing utility that:
 - Maps estimated AC prevalence from census tract or block group level to ZIP Code Tabulation Areas (ZCTAs) and counties
