@@ -1,0 +1,142 @@
+---
+title: "AC estimation"
+output: html_document
+date: "2024-07-11"
+editor_options:
+  chunk_output_type: console
+---
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(tidycensus)
+library(data.table)
+library(sf)
+```
+
+
+# combine dewey data
+```{r}
+df<- fread("<your_path_here>")
+acdf <- df%>%dplyr::select(c("LAT","LON","FIPS","PROPID","AIRCONDITIONINGCODE","CNSSTRACT","ZIPCODE","COUNTY", "STATE"))
+
+acdf<- acdf %>%
+  mutate(AIRCONDITIONINGrecode = case_when(
+    AIRCONDITIONINGCODE == 1 ~ "Central",
+    AIRCONDITIONINGCODE == 2 ~ "Evaporative Cooler",
+    AIRCONDITIONINGCODE == 3 ~ "None",
+    AIRCONDITIONINGCODE == 4 ~ "Central",
+    AIRCONDITIONINGCODE == 5 ~ "Others",
+    AIRCONDITIONINGCODE == 6 ~ "None",
+    AIRCONDITIONINGCODE == 7 ~ "Others",
+    AIRCONDITIONINGCODE == 8 ~ "Others",
+    AIRCONDITIONINGCODE == 9 ~ "Others",
+    AIRCONDITIONINGCODE == 10 ~ "None",
+    AIRCONDITIONINGCODE== 11 ~ "None",
+    AIRCONDITIONINGCODE == 12 ~ "Others",
+    AIRCONDITIONINGCODE == 13 ~ "Yes",
+    AIRCONDITIONINGCODE == 14 ~ "Central",
+    TRUE ~ as.character(AIRCONDITIONINGCODE) # for any other unexpected values
+  ))
+rm(df)
+imputedf <- read.csv("<your_path_here>")
+
+#merge with acdf
+DF <- merge(acdf, imputedf, all.y=TRUE, by =c("PROPID"))
+residf <-DF%>%filter(Classification == "Residential-Owned")
+write.csv(residf, "<your_path_here>", row.names=F)
+```
+
+#boundary
+```{r}
+metro<- st_read("<your_path_here>")
+metro <- metro %>%
+  dplyr::rename(CBSA_GEOID = GEOID)%>%select(CBSA_GEOID,NAME,LSAD)
+
+tract <- st_read("<your_path_here>")%>%select(GEOID)
+
+joined_data <- st_join(tract , metro, join = st_intersects)
+censusmetro<-joined_data %>%
+  mutate(Metorlevel = ifelse(is.na(LSAD), "NotMetro", LSAD))  %>% as.data.frame()%>%select(-c("geometry","LSAD","NAME"))%>%
+  distinct(GEOID, .keep_all = TRUE)# Remove geometry column
+
+head(censusmetro)
+```
+
+```{r}
+vars <- load_variables(2021, "acs5", cache = TRUE)
+boundary <- get_acs(
+        geography = "county",
+        variables = 'B01001A_001',
+        year = 2020,
+        output = "wide",
+      )%>%dplyr::select(-c("B01001A_001E","B01001A_001M")) %>% #
+  separate(NAME, into = c("Name", "State"), sep = ", ")%>%as.data.frame()%>%filter(State != "Puerto Rico" & State != "Alaska" & State != "Hawaii")
+
+```
+
+# combine all the data for comtemporal time peridos
+```{r}
+cdddf <- read.csv( "<your_path_here>")%>%filter(YEAR == 2024)%>%
+  mutate(GEOIDCN = ifelse(Name == "District of Columbia", '11001', GEOIDCN))%>%dplyr::select(c("Value","YEAR", "GEOIDCN"))
+cdddf$GEOIDCN<-  sprintf("%05s", cdddf$GEOIDCN)
+census2020 <- read.csv("<your_path_here>")#%>%filter(year == 2021)
+
+#combine the CDD and census
+DF <- merge(boundary, cdddf, by.x = 'GEOID', by.y ='GEOIDCN', all.x=TRUE )%>% dplyr::rename(GEOIDCN=GEOID )
+DFall <- merge(census2020, DF, by.x = c("CountyName","State"), by.y = c("Name",   "State"), all.x =TRUE)%>%filter(State != "Puerto Rico" & State != "Alaska" & State != "Hawaii")
+DFall$GEOID<- sprintf("%011s", DFall$GEOID)
+
+#combine with BUPR
+BUPR <- read.csv("<your_path_here>")
+BUPR$STATE<- sprintf("%02d", BUPR$STATE)
+BUPR$COUNTY <- sprintf("%03d", BUPR$COUNTY)
+BUPR$GEOID<- as.character(BUPR$GEOID)
+BUPR$GEOID<- sprintf("%011s", BUPR$GEOID)
+
+result <- merge( DFall,BUPR, by = c("GEOID"), all.x =TRUE)
+
+#combine with redlining
+red<- read.csv("<your_path_here>")%>% dplyr::rename(GEOID=GEOID20 )
+red$GEOID<- sprintf("%011s", red$GEOID)
+
+Red <- merge(result, red, by = c("GEOID"), all.x =TRUE)%>%dplyr::select(-c("INTERVAL2020", "METRO_NAME", "YEAR","Year", "geometry"))%>% dplyr::rename(CDDs=Value )%>%filter(State != "Puerto Rico" & State != "Alaska" & State != "Hawaii")
+Red <- left_join(Red, censusmetro)
+#
+#write.csv(Red,"<your_path_here>",row.names = FALSE)
+#combine with resident
+library(readr)
+Red <- read_csv("<your_path_here>")%>%select(-c("Tract","State","CountyName", "Black", "Hispanic","total_population", "total_house","year", "Poverty","RenterOccupied", "HigherEdu","STATE","COUNTY", "CBSA10","STATEFP","COUNTYFP","TRACTCE","GISJOIN" ,"CBSA_GEOID"))
+Red$GEOIDCN<- sprintf("%05s",as.character(Red$GEOIDCN))
+Red$GEOID<- sprintf("%011s",as.character(Red$GEOID))
+
+
+
+residf <- read.csv("<your_path_here>")
+residf$AIRCONDITIONINGrecode<- recode(residf$AIRCONDITIONINGrecode,"None"="NoAC")
+residf$REHEATTYPE<- recode(residf$REHEATTYPE,"None"="Noheater")
+
+residf$GEOIDCN<- sprintf("%05d",residf$FIPS)
+residf$CNSSTRACT<- sprintf("%06d",residf$CNSSTRACT)
+Residf <- residf%>%
+  mutate(GEOID = paste0(GEOIDCN, CNSSTRACT))  %>% filter((LON != 0) & (CNSSTRACT!="0000NA"))%>% select(-c("CNSSTRACT","FIPS","Classification"))
+
+#final merge
+library(data.table)
+Residf_dt <- as.data.table(Residf)
+Red_dt <- as.data.table(Red)
+rm(Red, residf, Residf)
+finaldf <- merge(Residf_dt, Red_dt, by = c("GEOID", "GEOIDCN"), all.x = TRUE)
+
+
+
+finaldf<- as.data.frame(finaldf)
+finaldf <- finaldf %>%
+  mutate(Metorlevel = replace_na(Metorlevel, "NotMetro"))
+write.csv(finaldf, "<your_path_here>", row.names=F)
+
+
+```
+
+
+
