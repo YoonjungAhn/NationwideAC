@@ -1,3 +1,17 @@
+
+
+# Nationwide AC Project
+
+This repository contains code and documentation for estimating air conditioning prevalence using various data sources and methodologies.
+
+
+## Setup Instructions
+
+1. Update any file paths labeled as `"<your_path_here>"` in the scripts.
+2. Ensure the required R and Python packages are installed.
+3. Run each script in the intended order if doing full pipeline analysis.
+
+
 ## Table of Contents
 
 - [Setup Instructions](#setup-instructions)
@@ -14,20 +28,7 @@
   - [IV. Data Creation](#iv-data-creation)
     - [cleaned_AC_to_county_zip.py](#1-cleaned_ac_to_county_zippy)
 
-
-# Nationwide AC Project
-
-This repository contains code and documentation for estimating air conditioning prevalence using various data sources and methodologies.
-
-
-## Setup Instructions
-
-1. Update any file paths labeled as `"<your_path_here>"` in the scripts.
-2. Ensure the required R and Python packages are installed.
-3. Run each script in the intended order if doing full pipeline analysis.
-
 ## Repository Contents
-
 ## I. Data preparation and modeling  
 
 ### 1. `Dataintegration_ACestimation.Rmd`
