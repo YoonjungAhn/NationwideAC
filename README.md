@@ -118,4 +118,6 @@ A data processing utility that:
 - Includes support for custom shapefiles and weighting schemes
 
 
+## Citation
+Ahn. Y & Uejio. C "A Comprehensive Dataset of Residential Air Conditioning Prevalence in the Continental United States"
 
