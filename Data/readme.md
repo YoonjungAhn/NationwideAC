@@ -1,4 +1,4 @@
-# AC prevalence
+# 1. AC prevalence
 Predicted Air Conditioning (AC) Prevalence by Census Tract, Zip, and City – 2010, 2015, and 2020 Boundaries 
 
 Description:
@@ -31,7 +31,7 @@ University of Kansas
 yoonjung.ahn@ku.edu
 
 
-# Uncertainty
+# 2. Uncertainty layer
 Predicted Air Conditioning (AC) Type Probabilities by Census Tract – 2000, 2010, 2015, and 2020 Boundaries
 
 Description:
