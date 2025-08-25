@@ -1,3 +1,4 @@
+# AC prevalence
 Predicted Air Conditioning (AC) Prevalence by Census Tract, Zip, and City – 2010, 2015, and 2020 Boundaries 
 
 Description:
@@ -18,6 +19,41 @@ Each file includes the following fields:
 - Adjusted_Count: The number of housing units in the tract predicted to have the given ACtype, after adjustment.
 
 Each file corresponds to a different set of input housing features (from 2010, 2015, and 2020 respectively), while maintaining the 2010 geographic boundary reference.
+
+Citation:
+If you use this dataset, please cite:
+Ahn, Y. & Uejio, C. (2025). A Comprehensive Dataset of Residential Air Conditioning Prevalence in the Continental United States. [Data file].
+
+Contact:
+Yoonjung Ahn
+Department of Geography & Atmospheric Science
+University of Kansas
+yoonjung.ahn@ku.edu
+
+
+# Uncertainty
+Predicted Air Conditioning (AC) Type Probabilities by Census Tract – 2000, 2010, 2015, and 2020 Boundaries
+
+Description:
+This dataset contains modeled posterior probabilities for residential air conditioning (AC) types at the U.S. census tract level. While the spatial boundaries reflect tract definitions for 2000, 2010, 2015, and 2020, the probabilities are based on predictive models calibrated using housing characteristics from 2021.
+Unlike prevalence datasets, these layers capture model uncertainty by reporting the mean probability for each AC type within a tract, aggregated from point-level predictions.
+
+Adjustments:
+- No proportional scaling to housing units is applied in this dataset.
+- Probabilities are computed for each parcel/point and averaged within tracts.
+- This approach allows the dataset to reflect model confidence without imposing Census-based counts, making it suitable for uncertainty analysis and comparison with prevalence layers.
+
+Data Fields:
+Each file includes the following fields:
+- GEOID: The 11-digit census tract identifier (state + county + tract) from the shapefile of the corresponding boundary vintage.
+- prob_Central: Mean predicted probability of Central AC within the tract (values range from 0 to 1).
+- prob_Evaporative Cooler: Mean predicted probability of Evaporative Cooler AC type within the tract (0–1).
+- prob_NoAC: Mean predicted probability of no air conditioning within the tract (0–1).
+- prob_Others: Mean predicted probability of other or unspecified AC types within the tract (0–1).
+
+Coordinate Reference System:
+Data are based on tract geometries as published by the U.S. Census Bureau for the respective boundary definition (2000, 2010, 2015, or 2020) and use the native CRS from those shapefiles.
+Point locations (LAT, LON) were originally in EPSG:4326 and reprojected to match each tract shapefile’s CRS before spatial joins.
 
 Citation:
 If you use this dataset, please cite:
