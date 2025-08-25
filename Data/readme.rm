@@ -1,1 +1,18 @@
-Read me
+Predicted Air Conditioning (AC) Prevalence by Census Tract, Zip, and City – 2010, 2015, and 2020 Boundaries 
+
+Description:
+This dataset contains modeled estimates of air conditioning (AC) prevalence across U.S. census boundaries using tract boundary definitions for the year 2020. While the spatial boundaries reflect census tract and county definitions for 2010, 2015 and 2020, the AC prevalence estimates are based on predictive models calibrated using housing characteristics from 2021. This allows the dataset to represent contemporary AC conditions aligned with historical geographic definitions for longitudinal and comparative analysis.
+
+To ensure consistency with known housing stock, the number of predicted units by AC type was adjusted to match the total number of occupied housing units in each census tract, based on 2020 Decennial Census data. Adjustments were applied using proportional scaling. For the 2010 and 2015 datasets, we used crosswalks from the National Historical Geographic Information System (NHGIS) to align 2020 housing unit data with 2010 tract boundaries, accounting for geographic boundary changes over time.
+
+
+Adjustments:
+- We compared with the occupied housing units from the decennial census in a tract/zip/city, all predicted counts were proportionally scaled.
+- The final dataset includes adjusted counts and percentages to reflect this correction.
+
+Data Fields:
+Each file includes the following fields:
+- GEOIDCN: The county FIPS code (a 5-digit code combining state and county identifiers).
+- GEOID: The 11-digit census tract identifier (state + county + tract).
+- ACtype: The type of air conditioning unit (e.g., Central, Window, NoAC).
+- Adjusted_Count: The number of housing units in the tract predicted to have the given ACtype, after adjustment.
