@@ -16,3 +16,15 @@ Each file includes the following fields:
 - GEOID: The 11-digit census tract identifier (state + county + tract).
 - ACtype: The type of air conditioning unit (e.g., Central, Window, NoAC).
 - Adjusted_Count: The number of housing units in the tract predicted to have the given ACtype, after adjustment.
+
+Each file corresponds to a different set of input housing features (from 2010, 2015, and 2020 respectively), while maintaining the 2010 geographic boundary reference.
+
+Citation:
+If you use this dataset, please cite:
+Ahn, Y. & Uejio, C. (2025). A Comprehensive Dataset of Residential Air Conditioning Prevalence in the Continental United States. [Data file].
+
+Contact:
+Yoonjung Ahn
+Department of Geography & Atmospheric Science
+University of Kansas
+yoonjung.ahn@ku.edu
