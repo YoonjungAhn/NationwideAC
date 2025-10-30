@@ -119,5 +119,5 @@ A data processing utility that:
 
 
 ## Citation
-Ahn. Y & Uejio. C "A Comprehensive Dataset of Residential Air Conditioning Prevalence in the Continental United States"
+Ahn. Y & Uejio. C "A Comprehensive Dataset of Residential Air Conditioning Prevalence in the Continental United States" https://www.nature.com/articles/s41597-025-06104-3
 
