@@ -10,7 +10,7 @@ New to XGBoost? The XGBoost documentation has a good [introduction to boosted tr
 ## Setup Instructions
 
 1. Update any file paths labeled as `"<your_path_here>"` in the scripts. A comment above each one describes the file expected there (content, source and file type).
-2. The R Markdown files (`.Rmd`) use the folder they are saved in as the working directory, so their input and output files are written as relative paths (e.g. `"./Combined_CoolingDegreedDays.csv"`). Put the input files next to the `.Rmd` file or edit those relative paths.
+2. The R Markdown files (`.Rmd`) use the folder they are saved in as the working directory, so their input and output files are written as relative paths (e.g. `"./Allcombine.csv"`). Put the input files next to the `.Rmd` file or edit those relative paths.
 3. Ensure the required R and Python packages are installed.
 4. Run each script in the order below if doing full pipeline analysis.
 
