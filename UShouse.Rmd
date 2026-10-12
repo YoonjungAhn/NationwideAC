@@ -1,0 +1,569 @@
+---
+title: "total number of housing"
+output: html_document
+date: "2025-05-13"
+editor_options: 
+  chunk_output_type: console
+---
+<!--
+Purpose: adjust the predicted AC counts so they do not exceed the number of
+housing units reported by the Census, at the tract, county, block group and
+ZIP code (ZCTA) levels (proportional scaling, see Data/readme.md).
+
+Working directory: an .Rmd file uses the folder it lives in as the working
+directory, so all files below are relative to this file's folder.
+
+Inputs:
+  nhgis_tr2020_tr2010.csv             - NHGIS 2020 -> 2010 tract crosswalk (https://www.nhgis.org/geographic-crosswalks)
+  results/FINALdata/summary_*_{year}.csv - AC summaries written by ACprob_to_county_zip.py
+  Totalhousing_{year}_zcta.csv        - ZCTA-level total housing units downloaded from the Census Bureau
+  Housing-unit totals for tracts, counties and block groups are downloaded with tidycensus
+  (requires a Census API key: https://api.census.gov/data/key_signup.html, then tidycensus::census_api_key()).
+Outputs:
+  results/FINALdata/summary_{tract,county,grp}_adjusted_{year}.csv and summary_zcta_adjusted_{year}.csv
+-->
+
+```{r}
+library(tidycensus)
+library(tidyverse)  # dplyr, readr, tidyr, stringr
+```
+
+# census tract level
+```{r}
+# Download total population by county for 2020 ACS 5-year
+
+# Get vector of all state abbreviations (or use fips_codes if you want state codes)
+state_list <- unique(fips_codes$state)[1:51]  # Exclude PR if needed
+
+# Initialize empty list to store each state's data
+acs_list <- list()
+
+# Loop through each state and fetch ACS data
+for (state_abbr in state_list) {
+  message("Getting data for state: ", state_abbr)
+  try({
+    acs_data <- get_acs(
+      geography = "tract",
+      variables = c(totalhouse = "B07013_001E"),
+      year = 2010,
+      survey = "acs5",
+      state = state_abbr,
+      geometry = FALSE,
+      cache_table = TRUE
+    )
+    acs_list[[state_abbr]] <- acs_data
+  }, silent = TRUE)  # If a state fails, skip it
+}
+
+# Combine all into one dataframe
+acs_2010_all <- bind_rows(acs_list)
+
+# Check result
+glimpse(acs_2010_all)
+
+
+# Get vector of all state abbreviations (or use fips_codes if you want state codes)
+state_list <- unique(fips_codes$state)[1:51]  # Exclude PR if needed
+
+# Initialize empty list to store each state's data
+dc_list <- list()
+
+# Loop through each state and fetch ACS data
+for (state_abbr in state_list) {
+  message("Getting data for state: ", state_abbr)
+  try({
+    dc_data <-  get_decennial(
+      geography = "tract",
+      variables = c(totalhouse = "H1_001N"),
+      year = 2020,
+      state = state_abbr,
+      geometry = FALSE,
+      cache_table = TRUE
+    )
+    dc_list[[state_abbr]] <- dc_data
+  }, silent = TRUE)  # If a state fails, skip it
+}
+dc_2020_all <- bind_rows(dc_list)
+
+# Check result
+glimpse(dc_2020_all)
+
+#crosswalk: NHGIS 2020 -> 2010 census tract crosswalk (CSV)
+tr2010 <-read.csv('./nhgis_tr2020_tr2010.csv')
+tr2010$GEOID <- sprintf("%011s",tr2010$tr2020ge)
+
+DC_2020_all<- left_join(dc_2020_all,tr2010 )%>%select(-c( "parea","wt_pop","wt_adult","wt_fam","wt_hh", "wt_hu","wt_ownhu",  "wt_renthu","NAME","variable",'tr2010gj','tr2020gj','tr2020ge'))%>%
+  rename(total_units = value)
+write.csv(DC_2020_all, './Totalhousing_2020.csv', row.names = FALSE)
+
+```
+
+#adjusting for min_max match with decinial 
+```{r}
+
+# Define file paths
+prediction_files <- list(
+  "2010" = "./results/FINALdata/summary_tract_2010.csv",
+  "2015" = "./results/FINALdata/summary_tract_2015.csv",
+  "2020" = "./results/FINALdata/summary_tract_2020.csv"
+)
+
+# Output file names
+output_files <- list(
+  "2010" = "./results/FINALdata/summary_tract_adjusted_2010.csv",
+  "2015" = "./results/FINALdata/summary_tract_adjusted_2015.csv",
+  "2020" = "./results/FINALdata/summary_tract_adjusted_2020.csv"
+)
+
+# Load and prepare housing units data (10-digit non-padded IDs, no sprintf needed)
+housing_units <- read_csv("./Totalhousing_2020.csv") %>%
+  mutate(
+    GEOID = as.character(GEOID),
+    tr2010ge = as.character(tr2010ge)
+  ) %>%
+  distinct(GEOID, .keep_all = TRUE)
+
+# Function to adjust counts and save
+adjust_counts <- function(year, prediction_file, housing_data, output_file) {
+  df <- read_csv(prediction_file, show_col_types = FALSE)
+  if ("GEOID10" %in% names(df)) df <- rename(df, GEOID = GEOID10)
+  df <- df %>%
+    mutate(GEOID = as.character(GEOID)) %>%
+    distinct()
+
+  # Join on appropriate key
+  if (year %in% c("2010", "2015")) {
+    adjusted <- df %>%
+      left_join(housing_data %>% select(tr2010ge, total_units),
+                by = c("GEOID" = "tr2010ge"))
+  } else {
+    adjusted <- df %>%
+      left_join(housing_data %>% select(GEOID, total_units), by = "GEOID")
+  }
+
+  # Derive GEOIDCN (remove last 6 tract digits) and do adjustment
+  adjusted <- adjusted %>%
+    mutate(GEOIDCN = str_sub(GEOID, 1, -7)) %>%
+    group_by(GEOID) %>%
+    mutate(
+      total_predicted = sum(Count, na.rm = TRUE),
+      scaling_factor = if_else(total_predicted > total_units, total_units / total_predicted, 1),
+      Adjusted_Count = round(Count * scaling_factor),
+      Adjusted_Percentage = round(100 * Adjusted_Count / sum(Adjusted_Count), 2)
+    ) %>%
+    ungroup()
+
+  # Final select of columns
+  adjusted <- adjusted %>%
+    select(GEOIDCN, GEOID, ACtype, Adjusted_Count, Adjusted_Percentage) %>%
+    drop_na(GEOID)
+
+  # Save to file
+  write_csv(adjusted, output_file)
+  return(adjusted)
+}
+
+# Apply to each file
+adjusted_data <- mapply(
+  adjust_counts,
+  year = names(prediction_files),
+  prediction_file = prediction_files,
+  output_file = output_files,
+  MoreArgs = list(housing_data = housing_units),
+  SIMPLIFY = FALSE
+)
+
+```
+
+# county level adjustment
+```{r}
+
+# Download county-level total housing units from Census for a given year
+get_county_housing <- function(year) {
+  state_list <- unique(fips_codes$state)[1:51]
+  result_list <- list()
+  for (state_abbr in state_list) {
+    message("Getting county housing for state: ", state_abbr, " (", year, ")")
+    try({
+      if (year == 2020) {
+        dat <- get_decennial(
+          geography = "county",
+          variables = "H1_001N",
+          year = 2020,
+          state = state_abbr,
+          geometry = FALSE,
+          cache_table = TRUE
+        ) %>%
+          select(GEOID, total_units = value)
+      } else {
+        dat <- get_acs(
+          geography = "county",
+          variables = "B25001_001",
+          year = year,
+          survey = "acs5",
+          state = state_abbr,
+          geometry = FALSE,
+          cache_table = TRUE
+        ) %>%
+          select(GEOID, total_units = estimate)
+      }
+      result_list[[state_abbr]] <- dat
+    }, silent = TRUE)
+  }
+  bind_rows(result_list) %>%
+    mutate(GEOID = sprintf("%05d", as.integer(GEOID))) %>%
+    distinct(GEOID, .keep_all = TRUE)
+}
+
+# Download housing data for each year
+housing_county_2010 <- get_county_housing(2010)
+housing_county_2015 <- get_county_housing(2015)
+housing_county_2020 <- get_county_housing(2020)
+
+# Input prediction files (output from ACprob_to_county_zip.py)
+county_prediction_files <- list(
+  "2010" = "./results/FINALdata/summary_county_2010.csv",
+  "2015" = "./results/FINALdata/summary_county_2015.csv",
+  "2020" = "./results/FINALdata/summary_county_2020.csv"
+)
+
+# Output files
+county_output_files <- list(
+  "2010" = "./results/FINALdata/summary_county_adjusted_2010.csv",
+  "2015" = "./results/FINALdata/summary_county_adjusted_2015.csv",
+  "2020" = "./results/FINALdata/summary_county_adjusted_2020.csv"
+)
+
+# Housing data list keyed by year
+county_housing_list <- list(
+  "2010" = housing_county_2010,
+  "2015" = housing_county_2015,
+  "2020" = housing_county_2020
+)
+
+# Adjust county-level AC counts using housing units as a cap
+adjust_county_counts <- function(year, prediction_file, housing_data, output_file) {
+  df <- read_csv(prediction_file, show_col_types = FALSE) %>%
+    mutate(GEOID = sprintf("%05d", as.integer(GEOID))) %>%
+    distinct()
+
+  adjusted <- df %>%
+    left_join(housing_data %>% select(GEOID, total_units), by = "GEOID") %>%
+    group_by(GEOID) %>%
+    mutate(
+      total_predicted     = sum(Count, na.rm = TRUE),
+      scaling_factor      = if_else(total_predicted > total_units, total_units / total_predicted, 1),
+      Adjusted_Count      = round(Count * scaling_factor),
+      Adjusted_Percentage = round(100 * Adjusted_Count / sum(Adjusted_Count), 2)
+    ) %>%
+    ungroup() %>%
+    select(GEOID, ACtype, Adjusted_Count, Adjusted_Percentage) %>%
+    drop_na(GEOID)
+
+  write_csv(adjusted, output_file)
+  message("Saved: ", output_file)
+  return(adjusted)
+}
+
+# Apply across all years
+county_adjusted_data <- Map(
+  adjust_county_counts,
+  year            = names(county_prediction_files),
+  prediction_file = county_prediction_files,
+  housing_data    = county_housing_list,
+  output_file     = county_output_files
+)
+```
+
+# block group level adjustment
+```{r}
+
+# Download block-group-level total housing units for a given year
+get_blkgrp_housing <- function(year) {
+  state_list <- unique(fips_codes$state)[1:51]
+  result_list <- list()
+  for (state_abbr in state_list) {
+    message("Getting block group housing for state: ", state_abbr, " (", year, ")")
+    try({
+      if (year == 2000) {
+        dat <- get_decennial(
+          geography = "block group",
+          variables = "H001001",
+          year = 2000,
+          state = state_abbr,
+          sumfile = "sf1",
+          geometry = FALSE,
+          cache_table = TRUE
+        ) %>%
+          select(GEOID, total_units = value)
+      } else {
+        dat <- get_acs(
+          geography = "block group",
+          variables = "B25001_001",
+          year = year,
+          survey = "acs5",
+          state = state_abbr,
+          geometry = FALSE,
+          cache_table = TRUE
+        ) %>%
+          select(GEOID, total_units = estimate)
+      }
+      result_list[[state_abbr]] <- dat
+    }, silent = TRUE)
+  }
+  bind_rows(result_list) %>%
+    mutate(GEOID = as.character(GEOID)) %>%
+    distinct(GEOID, .keep_all = TRUE)
+}
+
+# Download housing data for each year
+housing_blkgrp_2000 <- get_blkgrp_housing(2000)
+housing_blkgrp_2010 <- get_blkgrp_housing(2010)
+housing_blkgrp_2015 <- get_blkgrp_housing(2015)
+housing_blkgrp_2020 <- get_blkgrp_housing(2020)
+
+# Input prediction files
+blkgrp_prediction_files <- list(
+  "2000" = "./results/FINALdata/summary_grp_2000.csv",
+  "2010" = "./results/FINALdata/summary_grp_2010.csv",
+  "2015" = "./results/FINALdata/summary_grp_2015.csv",
+  "2020" = "./results/FINALdata/summary_grp_2020.csv"
+)
+
+# Output files
+blkgrp_output_files <- list(
+  "2000" = "./results/FINALdata/summary_grp_adjusted_2000.csv",
+  "2010" = "./results/FINALdata/summary_grp_adjusted_2010.csv",
+  "2015" = "./results/FINALdata/summary_grp_adjusted_2015.csv",
+  "2020" = "./results/FINALdata/summary_grp_adjusted_2020.csv"
+)
+
+# Housing data list keyed by year
+blkgrp_housing_list <- list(
+  "2000" = housing_blkgrp_2000,
+  "2010" = housing_blkgrp_2010,
+  "2015" = housing_blkgrp_2015,
+  "2020" = housing_blkgrp_2020
+)
+
+# Adjust block-group-level AC counts using housing units as a cap
+adjust_blkgrp_counts <- function(year, prediction_file, housing_data, output_file) {
+  df <- read_csv(prediction_file, show_col_types = FALSE)
+  # Standardize GEOID column name (2000 uses STFID, 2010+ uses GEOID10)
+  if ("STFID"   %in% names(df)) df <- rename(df, GEOID = STFID)
+  if ("GEOID10" %in% names(df)) df <- rename(df, GEOID = GEOID10)
+  df <- df %>%
+    mutate(GEOID = as.character(GEOID)) %>%
+    distinct()
+
+  adjusted <- df %>%
+    left_join(housing_data %>% select(GEOID, total_units), by = "GEOID") %>%
+    group_by(GEOID) %>%
+    mutate(
+      total_predicted     = sum(Count, na.rm = TRUE),
+      scaling_factor      = if_else(total_predicted > total_units, total_units / total_predicted, 1),
+      Adjusted_Count      = round(Count * scaling_factor),
+      Adjusted_Percentage = round(100 * Adjusted_Count / sum(Adjusted_Count), 2)
+    ) %>%
+    ungroup() %>%
+    select(GEOID, ACtype, Adjusted_Count, Adjusted_Percentage) %>%
+    drop_na(GEOID)
+
+  write_csv(adjusted, output_file)
+  message("Saved: ", output_file)
+  return(adjusted)
+}
+
+# Apply across all years
+blkgrp_adjusted_data <- Map(
+  adjust_blkgrp_counts,
+  year            = names(blkgrp_prediction_files),
+  prediction_file = blkgrp_prediction_files,
+  housing_data    = blkgrp_housing_list,
+  output_file     = blkgrp_output_files
+)
+```
+
+# zip code level
+```{r}
+
+# Prediction files (2020 only shown here — expand for 2000 and 2010 if needed)
+prediction_files <- list(
+  "2000" = "./results/FINALdata/summary_zcta_with_county_2000.csv",
+  "2010" = "./results/FINALdata/summary_zcta_with_county_2010.csv",
+  "2015" = "./results/FINALdata/summary_zcta_with_county_2015.csv",
+  "2020" = "./results/FINALdata/summary_zcta_with_county_2020.csv"
+)
+
+# ZCTA-level total housing units (CSV, last column = total units, NAME contains the 5-digit ZCTA)
+housing_files <- list(
+  "2000" = "./Totalhousing_2000_zcta.csv",
+  "2010" = "./Totalhousing_2010_zcta.csv",
+  "2015" = "./Totalhousing_2010_zcta.csv",
+  "2020" = "./Totalhousing_2020_zcta.csv"
+)
+
+# Output locations
+output_files <- list(
+  "2000" = "./summary_zcta_adjusted_2000.csv",
+  "2010" = "./summary_zcta_adjusted_2010.csv",
+  "2015" = "./summary_zcta_adjusted_2015.csv",
+  "2020" = "./summary_zcta_adjusted_2020.csv"
+)
+
+# Define the function to adjust AC counts by ZCTA
+
+adjust_zcta_counts <- function(year, prediction_path, housing_path, output_path) {
+  # Read prediction data
+  prediction <- read_csv(prediction_path, show_col_types = FALSE) %>%
+    mutate(ZCTA = sprintf("%05s", as.character(ZCTA)))
+
+  # Read housing data and extract ZCTA
+  housing_raw <- read_csv(housing_path, show_col_types = FALSE)
+  
+  # Identify the last column (assumed to be total housing units)
+  last_col_name <- colnames(housing_raw)[ncol(housing_raw)]
+
+  # Rename last column to total_units and extract ZCTA from NAME
+  housing <- housing_raw %>%
+    rename(total_units = all_of(last_col_name)) %>%
+    mutate(ZCTA = str_extract(NAME, "\\d{5}"),
+           ZCTA = sprintf("%05s", ZCTA)) %>%
+    distinct(ZCTA, total_units)
+
+  # Join and adjust counts
+  adjusted <- prediction %>%
+    left_join(housing, by = "ZCTA") %>%
+    group_by(ZCTA) %>%
+    mutate(
+      total_predicted = sum(Count, na.rm = TRUE),
+      scaling_factor = if_else(total_predicted > total_units, total_units / total_predicted, 1),
+      Adjusted_Count = round(Count * scaling_factor),
+      Adjusted_Percentage = round(100 * Adjusted_Count / sum(Adjusted_Count), 2)
+    ) %>%
+    ungroup() %>%
+    select(GEOID, ZCTA, ACtype, Adjusted_Count, Adjusted_Percentage) %>%
+    drop_na(ZCTA)
+
+  # Save result
+  write_csv(adjusted, output_path)
+  return(adjusted)
+}
+
+
+# Apply across all years
+adjusted_data <- mapply(
+  adjust_zcta_counts,
+  year = names(prediction_files),
+  prediction_path = prediction_files,
+  housing_path = housing_files,
+  output_path = output_files,
+  SIMPLIFY = FALSE
+)
+
+
+
+```
+
+
+
+
+
+
+
+
+# calculating weighted count & percentage
+```{r}
+
+# Load your AC prediction data
+df <- read_csv("./results/FINALdata/summary_tract_2010.csv",
+               show_col_types = FALSE)
+if ("GEOID10" %in% names(df)) df <- rename(df, GEOID = GEOID10)
+df$GEOID <- as.character(df$GEOID)
+
+# Use acs_2010_all to extract total housing units
+# Keep only GEOID and estimate columns and rename estimate to total_units
+acs_tract_units <- acs_2010_all %>%
+  select(GEOID, total_units = estimate)
+
+# Step 1: Join ACS total_units to the AC prediction data by GEOID
+df <- df %>%
+  left_join(acs_tract_units, by = "GEOID")
+
+# Step 2: Calculate weighted predicted percentage using ACS housing totals
+df <- df %>%
+  mutate(
+    weighted_count = Count,  # the model's predicted count already
+    weighted_percentage = Count / total_units * 100
+  )
+
+# Step 3: Round percentage for display
+df <- df %>%
+  mutate(weighted_percentage = round(weighted_percentage, 2))
+
+# View result
+head(df)
+
+write.csv(df, "./results/summary_tract_2010_weights.csv")
+```
+
+
+
+#calculating total number of housing
+```{r}
+
+
+# Set your Census API key (you only need to do this once)
+# Get a key from: https://api.census.gov/data/key_signup.html
+
+
+# Download total population by county for 2020 ACS 5-year
+acs_2020 <- get_acs(
+  geography = "state",
+  variables = "B25136_001E", # !Total Housing Units:
+  year = 2022,
+  survey = "acs5",
+  #geometry = TRUE,          # Set to FALSE if you don't need spatial data
+  cache_table = TRUE
+)
+
+# Exclude non-CONUS states and territories
+non_conus <- c("Alaska", "Hawaii", "Puerto Rico", 
+               "American Samoa", "Guam", 
+               "Northern Mariana Islands", "U.S. Virgin Islands")
+
+acs_2020_conus <- acs_2020 %>%
+  filter(!NAME %in% non_conus)
+
+# View the cleaned data
+head(acs_2020_conus)
+
+sum(acs_2020_conus$estimate)
+# Save to a file if needed
+write.csv(acs_2020_conus , "./acs2020_house_county.csv", row.names = FALSE)
+
+```
+
+```{r}
+
+# Download total population by county for 2020 ACS 5-year
+acs_2020 <- get_acs(
+  geography = "state",
+  variables = "B25136_001E", # !Total Housing Units:
+  year = 2022,
+  survey = "acs5",
+  #geometry = TRUE,          # Set to FALSE if you don't need spatial data
+  cache_table = TRUE
+)
+
+# Exclude non-CONUS states and territories
+non_conus <- c("Alaska", "Hawaii", "Puerto Rico") 
+               #"American Samoa", "Guam", 
+               #"Northern Mariana Islands", "U.S. Virgin Islands")
+
+acs_2020_conus <- acs_2020 %>%
+  filter(NAME %in% non_conus)
+
+(2478277 /2450190)
+```
+

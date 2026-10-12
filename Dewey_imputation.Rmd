@@ -5,28 +5,43 @@ date: "2024-05-24"
 editor_options:
   chunk_output_type: console
 ---
+<!--
+Purpose: impute missing housing attributes in the Dewey property records with
+missForest. The imputed values are used by Dataintegration_ACestimation.Rmd.
+
+Working directory: an .Rmd file uses the folder it lives in as the working
+directory, so all files below are read from / written to this folder.
+
+Inputs:
+  Dewey_sample_complete.csv  - a subset of Dewey properties with no missing values, used
+                               only to tune missForest (section 1)
+  Dewey_selected_data.csv    - all Dewey property records (proprietary), used for the main imputation
+Outputs:
+  Dewey_categoryvalues_imputed_v2.csv - imputed categorical variables (Classification, CONDITION, RESOWNER, REHEATTYPE)
+  Dewey_numervalues_imputed.csv       - imputed numeric variables (YEARBUILT, RENOYEAR, TOTROOMS)
+  Join the two outputs by PROPID to make Dewey_imputed.csv, the input of Dataintegration_ACestimation.Rmd.
+-->
+
 ```{r}
 library(dplyr)
 library(readr)
+library(tidyr)
 library(doParallel)
 library(doRNG)
-library(dplyr)
-library(tidyr)
+library(foreach)
 library(missForest)
-setwd("<your_path_here>")
+library(data.table)
+library(ggplot2)
 ```
 
 #1. select complete data and introduce NAs
-```{r}
-library(doParallel)
-library(doRNG)
-library(dplyr)
-library(tidyr)
-library(missForest)
-```
 
 ```{r}
-combined_dataframe<- read.csv("<your_path_here>")
+# Dewey property records (CSV) with no missing values in the selected columns
+# (AIRCONDITIONINGCODE, CONDITION, RESOWNER, HEATTYPE, PROPCLASS, YEARBUILT,
+# RENOYEAR, BUILDSTYLE, TOTROOMS, STNUM, NUMFLOORS). Used to tune missForest:
+# NAs are introduced at random and imputation error is checked against the true values.
+combined_dataframe<- read.csv("./Dewey_sample_complete.csv")
 
 combined_dataframe<- combined_dataframe%>%
   mutate(AIRCONDITIONINGCODE_recode = case_when(
@@ -129,7 +144,6 @@ mtry_df <- data.frame(mtry_used, OOB_NRMSE, OOB_PFC) %>%
 ```
 
 ```{r}
-library(ggplot2)
 ggplot(mtry_df, aes(x =  mtry_used, y = error, col = factor(metric))) +
   geom_point() +
   geom_line() +
@@ -141,7 +155,8 @@ ggplot(mtry_df, aes(x =  mtry_used, y = error, col = factor(metric))) +
   labs(x = "mtry")
 
 
-ggsave("<your_path_here>",dpi = 300)
+# Plot of OOB error by mtry
+ggsave("./missForest_mtry_tuning.png",dpi = 300)
 ```
 
 ```{r}
@@ -159,20 +174,7 @@ DFsel.mis.imputed <- missForest(dfsel,parallelize = 'forests', verbose = T, maxi
 
 #Main imputation
 ```{r}
-
-library(dplyr)
-library(readr)
-library(doParallel)
-library(doRNG)
-library(dplyr)
-library(tidyr)
-library(missForest)
-library(data.table)
-setwd("<your_path_here>")
-```
-
-```{r}
-# Read the file using fread
+# Read all Dewey property records (CSV) using fread
 df <- fread("./Dewey_selected_data.csv")
 #nrow(df) 157685796
 df <- df %>%
@@ -304,11 +306,11 @@ print(round(end.time - start.time,2))
 imputed_chunks_df <- as.data.frame(imputed_chunks)
 
 head(imputed_chunks_df)
-write.csv(imputed_chunks_df, './/Dewey_categoryvalues_imputed_v2.csv', row.names = FALSE)
+write.csv(imputed_chunks_df, './Dewey_categoryvalues_imputed_v2.csv', row.names = FALSE)
 
 ```
 
-# numerica values imputation
+# numeric values imputation
 ```{r}
 dfselnum <-df%>% dplyr::select(c(YEARBUILT,RENOYEAR,  TOTROOMS ))
 
@@ -326,10 +328,6 @@ print(round(end.time - start.time,2))
 
 #modified
 ```{r}
-library(foreach)
-library(doParallel)
-library(data.table)
-library(missForest)
 dfselnum <-df%>% dplyr::select(c(YEARBUILT,RENOYEAR,  TOTROOMS ))
 
 dfselnum$YEARBUILT[dfselnum$YEARBUILT < 1800] <- NA
@@ -390,8 +388,8 @@ head(imputed_chunks_df)
 end.time <- Sys.time()
 print(round(end.time - start.time,2))
 
-write.csv(imputed_chunks_df, './HistoricalAC/Data/Dewey_numervalues_imputed_2part.csv',row.names = FALSE)
-imputed_chunks_df2 <- read.csv('./HistoricalAC/Data/Dewey_numervalues_imputed.csv')
+write.csv(imputed_chunks_df, './Dewey_numervalues_imputed_2part.csv',row.names = FALSE)
+imputed_chunks_df2 <- read.csv('./Dewey_numervalues_imputed.csv')
 
 ```
 

@@ -4,18 +4,35 @@ Created on Thu Sep  8 16:43:50 2022
 
 @author: yoah2447
 """
+"""
+Exploratory summary of the raw ZTRAX property records (not part of the final
+modeling pipeline). For each county it computes the share of properties by AC
+type code and maps:
+  1. missing AC information rate
+  2. AC prevalence (any AC type)
+  3. lower AC prevalence (no AC)
+  4. completeness of the AC type field
+
+Inputs:
+  - ZTRAX county extraction CSVs (proprietary) with RowID, FIPS,
+    BuildingOrImprovementNumber, BuildingAreaStndCode, BuildingAreaSqFt,
+    AirConditioningTypeorSystemStndCode
+  - cb_2018_us_county_500k.shp: Census cartographic boundary file for counties
+    (https://www.census.gov/geographies/mapping-files/time-series/geo/carto-boundary-file.html)
+"""
 #building density : https://towardsdatascience.com/calculating-building-density-in-r-with-osm-data-e9d85c701e19
 #land surface temperature: https://github.com/pylandtemp/pylandtemp/blob/master/tutorials/Tutorial_1-%20load_landsat8_image_from_amazon_and_google_cloud.ipynb
 
 import pandas as pd
-import geopandas
+import geopandas as gpd
 import glob
 
 #making data summary
 
-#files = [i for i in glob.glob('C:/Yoonjung/Data/ztrax_2021_extraction_county_areatypes/ztrax_2021_extraction_county_areatypes_'+'*.csv') ]
+# Folder holding the ZTRAX county extraction CSVs
+files = [i for i in glob.glob('<your_path_here>/ztrax_2021_extraction_county_areatypes_'+'*.csv') ]
 
-#DF =pd.DataFrame()
+DF =pd.DataFrame()
 for f in files:
     df = pd.read_csv(f)
     try:
@@ -29,15 +46,17 @@ for f in files:
     except KeyError:
         print(f)
     
-#DF.to_csv('C:/Yoonjung/research/03_nationwideAC\DATA/ACtypessummary.csv')
+# County-level summary of AC type shares
+DF.to_csv('<your_path_here>/ACtypessummary.csv')
 
-DF = pd.read_csv('C:/Yoonjung/research/03_nationwideAC\DATA/ACtypessummary.csv')
+DF = pd.read_csv('<your_path_here>/ACtypessummary.csv')
 DF['FIPS'] = DF['FIPS'].astype(int).astype(str)
 DF['FIPS'] =DF['FIPS'].apply(lambda x: '{0:0>5}'.format(x))
 
 #mapping for missing 
 import matplotlib.pyplot as plt
-usa = gpd.read_file('C:/Yoonjung/research/03_nationwideAC/cb_2018_us_county_500k/cb_2018_us_county_500k.shp')
+# Census county boundaries (shapefile, .shp)
+usa = gpd.read_file('<your_path_here>/cb_2018_us_county_500k/cb_2018_us_county_500k.shp')
 usa.tail() #last 5 records in dataframe
 usa['FIPS'] = usa.STATEFP + usa.COUNTYFP
 usa.FIPS = usa.FIPS.astype(int).astype(str)

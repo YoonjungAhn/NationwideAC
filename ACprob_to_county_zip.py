@@ -1,9 +1,38 @@
-# !/usr/bin/env Python3
-# -*- Coding: utf-8 -*-
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Created on Thu Feb 20 09:47:28 2025
 
 @author: y943a214
+"""
+
+"""
+Aggregates the property-level AC predictions to census tracts, ZIP Code
+Tabulation Areas (ZCTAs), metro areas (CBSAs) and block groups, and builds
+the county/metro keys used for the final datasets in Data/.
+
+Set every "<your_path_here>" to your project folder. The HPC sections
+(tract, ZCTA, city, block group) expect alltype_ac_predict_result.csv and a
+boundary/ folder inside that working directory.
+
+Input files
+-----------
+1. alltype_ac_predict_result.csv : property-level AC predictions, the output of
+   Alltype_ACesimtation_HPC_predict.py.
+2. Boundary shapefiles (.shp) for census tracts, ZCTAs and block groups,
+   2000/2010/2015/2020. These were downloaded from NHGIS (IPUMS National
+   Historical Geographic Information System, https://www.nhgis.org) ->
+   "GIS Files" -> select the geographic level and year. NHGIS names every
+   download "nhgisXXXX_..." with your own extract number (ours were
+   nhgis0075 for tracts, nhgis0077 for ZCTAs and nhgis0080 for block groups),
+   so rename the folders below to match your extract.
+3. CBSA (metro/micro area) shapefiles for 2000, 2010, 2015, 2020 and county
+   and state cartographic boundary files (cb_*_us_county_500k.shp,
+   cb_2020_us_state_500k.shp) from the U.S. Census Bureau
+   (https://www.census.gov/geographies/mapping-files.html).
+
+The summary_*.csv files written here are adjusted to census housing-unit
+totals in UShouse.Rmd.
 """
 
 import pandas as pd
@@ -11,39 +40,80 @@ import geopandas as gpd
 import os
 import numpy as np
 
-# Trcatbd = gpd.read_file("<your_path_here>")
 
-# Trcatbd = gpd.read_file("<your_path_here>")
-# Set The working directory
-# Working_directory = "<your_path_here>"
 
-working_directory = "<your_path_here>"
+yesac =pd.read_csv('<your_path_here>/Data/results/yes_ac_predict_result.csv')
+df = pd.read_csv('<your_path_here>/Data/allcombined_for_contemporal_prediction.csv')
+
+yesac  =yesac [['PROPID','Yespredicted']]
+
+#df = pd.read_csv('./allcombined_for_contemporal_prediction.csv',  na_values=[''])
+df.columns
+df = df.loc[~df['STATE'].isin(['AK', 'HI', 'PR'])]
+df['YEARBUILT'] = round(df['YEARBUILT'])
+df['TOTROOMS'] = round(df['TOTROOMS'])
+DF = df.loc[df['AIRCONDITIONINGrecode']!='Yes']
+
+df = pd.merge(df, yesac, how='left', on = ['PROPID'])
+
+
+test = df.drop_duplicates(subset='PROPID')
+
+
+
+
+#trcatbd = gpd.read_file('<your_path_here>/Data/boundary/nhgis0073_2015_us_tract_500k/US_tract_2015.shp')
+
+#trcatbd = gpd.read_file('<your_path_here>/Data/boundary/nhgis0077_shapefile_tl2010_us_zcta_2010/US_zcta_2010.shp')
+# Set the working directory
+#working_directory = '<your_path_here>/Data/boundary/'
+
+working_directory = '<your_path_here>'
 os.chdir(working_directory)
 
 
-# Df = pd.read_csv("<your_path_here>")
+#df = pd.read_csv('<your_path_here>/Data/results/alltype_ac_predict_result.csv')
 df = pd.read_csv('./alltype_ac_predict_result.csv')
 df['GEOID'] = df['GEOID'].apply(lambda x: f"{int(x):011d}")
 df['GEOID']= df['GEOID'].astype(str).str[:5]
-df['STATENM'] = df['STATE']
+#df['STATENM'] = df['STATE']
 
 df['STATE'] = df['GEOID'].astype(str).str[:2]
-df['New_AIRCONDITIONINGrecode'] =df['AIRCONDITIONINGrecode'].combine_first(df['finalAIRCONDITIONINGpre'])
 
-DF = df[['STATE','New_AIRCONDITIONINGrecode','LAT', 'LON']]
+df['New_AIRCONDITIONINGrecode'] = np.where(
+    df['AIRCONDITIONINGrecode'].isna() | (df['AIRCONDITIONINGrecode'] == 'Yes'),
+    df['finalAIRCONDITIONINGpre'],
+    df['AIRCONDITIONINGrecode']
+)
+
+df.loc[df['AIRCONDITIONINGrecode'].isna() | (df['AIRCONDITIONINGrecode'] == 'Yes'), 'New_AIRCONDITIONINGrecode'] = df['finalAIRCONDITIONINGpre']
+
+
+DF = df[[ 'PROPID','STATE','New_AIRCONDITIONINGrecode','LAT', 'LON']]#.drop_duplicates(subset='PROPID')
 DF.rename(columns={'New_AIRCONDITIONINGrecode': 'ACtype'}, inplace=True)
 
+#DFfl = DF.loc[DF.STATE =='12']
+#DFfl.to_csv('<your_path_here>/Data/results/Florida_alltype_ac.csv', index=False)
 
 
-# Define The directory names where the shapefiles will be stored
+
+# Define the directory names where the shapefiles will be stored
+# NHGIS tract shapefile folders (one per boundary year), relative to working_directory.
+# Replace "nhgis0075" with your own NHGIS extract number (see note at the top of this file).
 directories = [
     'boundary/nhgis0075_shapefile_tl2000_us_tract_2000',
     'boundary/nhgis0075_shapefile_tl2010_us_tract_2010',
     'boundary/nhgis0075_shapefile_tl2015_us_tract_2015',
-    'boundary/nhgis0075_shapefile_tl2020_us_tract_2020']
+    'boundary/nhgis0075_shapefile_tl2020_us_tract_2020',
+    
+    #'boundary/nhgis0077_shapefile_tl2000_us_zcta_2000',
+    #'boundary/nhgis0077_shapefile_tl2000_us_zcta_2010',
+    #'boundary/nhgis0077_shapefile_tl2000_us_zcta_2015',
+    #'boundary/nhgis0077_shapefile_tl2000_us_zcta_2020'
+]
 
 
-# Create Directories if they do not exist
+# Create directories if they do not exist
 for directory in directories:
     if not os.path.exists(directory):
         os.makedirs(directory)
@@ -51,47 +121,97 @@ for directory in directories:
     else:
         print(f"Directory already exists: {directory}")
 
-# Assume DF Is already defined and contains the required data
+# Assume DF is already defined and contains the required data
 states = DF['STATE'].unique()
 
-# Loop Through each directory to process all shapefiles
+def format_fips(series, width):
+    numeric = pd.to_numeric(series, errors='coerce')
+    if numeric.notna().all():
+        return numeric.astype('Int64').astype(str).str.zfill(width)
+    return series.astype(str).str.zfill(width)
+
+def prepare_tract_boundary_columns(trcatbd, shapefile):
+    """Return state and tract id columns, creating them for older NHGIS files."""
+    columns = set(trcatbd.columns)
+
+    state_candidates = ['STATEFP10', 'STATEFP00', 'STATEFP', 'STATEA', 'STATE']
+    geo_id_candidates = ['GEOID10', 'GEOID00', 'GEOID', 'STFID', 'GISJOIN']
+
+    statefp_column = next((col for col in state_candidates if col in columns), None)
+    geo_id_column = next((col for col in geo_id_candidates if col in columns), None)
+
+    if geo_id_column is None:
+        tract_parts = [
+            ('STATEA', 'COUNTYA', 'TRACTA'),
+            ('STATEFP10', 'COUNTYFP10', 'TRACTCE10'),
+            ('STATEFP00', 'COUNTYFP00', 'TRACTCE00'),
+            ('STATEFP', 'COUNTYFP', 'TRACTCE'),
+            ('STATE', 'COUNTY', 'TRACT'),
+        ]
+        for state_col, county_col, tract_col in tract_parts:
+            if {state_col, county_col, tract_col}.issubset(columns):
+                trcatbd['GEOID'] = (
+                    format_fips(trcatbd[state_col], 2)
+                    + format_fips(trcatbd[county_col], 3)
+                    + format_fips(trcatbd[tract_col], 6)
+                )
+                geo_id_column = 'GEOID'
+                break
+
+    if geo_id_column is None:
+        raise ValueError(
+            f"Could not find or build a tract id column for {shapefile}. "
+            f"Available columns: {list(trcatbd.columns)}"
+        )
+
+    if statefp_column is None:
+        if geo_id_column == 'GISJOIN':
+            trcatbd['STATEFP'] = trcatbd['GISJOIN'].astype(str).str[1:3]
+        else:
+            trcatbd['STATEFP'] = trcatbd[geo_id_column].astype(str).str[:2]
+        statefp_column = 'STATEFP'
+
+    trcatbd[statefp_column] = format_fips(trcatbd[statefp_column], 2)
+    return trcatbd, statefp_column, geo_id_column
+
+# Loop through each directory to process all shapefiles
 for directory in directories:
     allDF = pd.DataFrame()  # Initialize an empty DataFrame for each directory
     path = os.path.join(working_directory, directory)
     shapefiles = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.shp')]
-
-
-    # Process Each shapefile
+    
+    
+    # Process each shapefile
     for shapefile in shapefiles:
         print(f"Processing {shapefile}")
         trcatbd = gpd.read_file(shapefile)  # Read the current shapefile
-
-        statefp_column = 'STATEFP10' if 'STATEFP10' in trcatbd.columns else 'STATEFP'
-        geo_id_column = 'GEOID10' if 'GEOID10' in trcatbd.columns else 'GEOID'
+        trcatbd, statefp_column, geo_id_column = prepare_tract_boundary_columns(trcatbd, shapefile)
 
         for state in states:
             subdf = DF[DF['STATE'] == state]
             gdf = gpd.GeoDataFrame(subdf, geometry=gpd.points_from_xy(subdf.LON, subdf.LAT), crs='EPSG:4326')
             gdf = gdf.to_crs(trcatbd.crs)  # Reproject the GeoDataFrame to match the tract boundaries
-
+            
             tactbd_sel = trcatbd[trcatbd[statefp_column] == state]
-
+            if tactbd_sel.empty:
+                continue
+            
             interdf = gpd.sjoin(gdf, tactbd_sel, how="inner")  # Spatial join
-
-            # Calculate Percentage
+            
+            # Calculate percentage
             grouped_percent = interdf.groupby(geo_id_column)['ACtype'].value_counts(normalize=True) * 100
             grouped_percent = grouped_percent.rename('Percentage').reset_index()
-
-            # Calculate Count
+            
+            # Calculate count
             grouped_count = interdf.groupby(geo_id_column)['ACtype'].value_counts().rename('Count').reset_index()
-
-            # Merge Percentage and count data
+            
+            # Merge percentage and count data
             mergedf = pd.merge(grouped_percent, grouped_count, on=[geo_id_column, 'ACtype'])
-
-            # Append To the cumulative DataFrame
+            
+            # Append to the cumulative DataFrame
             allDF = pd.concat([allDF, mergedf], ignore_index=True)
 
-    # Save The compiled DataFrame to a CSV file
+    # Save the compiled DataFrame to a CSV file
     year = directory[-4:]  # Extract year from the directory name
     filename = f'summary_{directory.split("_")[-1]}_{year}.csv'  # Adapted to use the correct directory split for filename
     allDF.to_csv(filename, index=False)
@@ -101,7 +221,11 @@ print("All files processed.")
 
 
 
-# Tract level
+
+
+
+# this is for TRACT LEVEl
+#tract level 
 
 import geopandas as gpd
 import pandas as pd
@@ -114,18 +238,19 @@ def process_shapefiles(directory):
         allDF = pd.DataFrame()
         path = os.path.join(working_directory, directory)
         shapefiles = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.shp')]
-
+        
         for shapefile in shapefiles:
             trcatbd = gpd.read_file(shapefile)
-            geo_id_column = 'GEOID10' if 'GEOID10' in trcatbd.columns else 'GEOID'
-            statefp_column = 'STATEFP10' if 'STATEFP10' in trcatbd.columns else 'STATEFP'
-
+            trcatbd, statefp_column, geo_id_column = prepare_tract_boundary_columns(trcatbd, shapefile)
+            
             for state in states:
                 subdf = DF[DF['STATE'] == state]
                 gdf = gpd.GeoDataFrame(subdf, geometry=gpd.points_from_xy(subdf.LON, subdf.LAT), crs='EPSG:4326')
                 gdf = gdf.to_crs(trcatbd.crs)
 
                 tactbd_sel = trcatbd[trcatbd[statefp_column] == state]
+                if tactbd_sel.empty:
+                    continue
                 interdf = gpd.sjoin(gdf, tactbd_sel, how="inner")
 
                 grouped_percent = interdf.groupby(geo_id_column)['ACtype'].value_counts(normalize=True) * 100
@@ -142,10 +267,12 @@ def process_shapefiles(directory):
     except Exception as e:
         print(f"An error occurred in {directory}: {e}")
 
-# Set The working directory and prepare directories list
-working_directory = "<your_path_here>"
+# Set the working directory and prepare directories list
+working_directory = '<your_path_here>'
 os.chdir(working_directory)
 
+# NHGIS tract shapefile folders (one per boundary year), relative to working_directory.
+# Replace "nhgis0075" with your own NHGIS extract number (see note at the top of this file).
 directories = [
     'boundary/nhgis0075_shapefile_tl2000_us_tract_2000/',
     'boundary/nhgis0075_shapefile_tl2010_us_tract_2010/',
@@ -171,7 +298,7 @@ for directory in directories:
     else:
         print(f"Directory already exists: {directory}")
 
-# Use ProcessPoolExecutor To handle the multiprocessing
+# Use ProcessPoolExecutor to handle the multiprocessing
 with ProcessPoolExecutor() as executor:
     executor.map(process_shapefiles, directories)
 
@@ -180,7 +307,7 @@ print("All files processed.")
 
 
 
-# Zipcode level
+# zipcode level 
 
 import geopandas as gpd
 import pandas as pd
@@ -195,18 +322,18 @@ def process_shapefiles(directory):
         shapefiles = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.shp')]
 
         state_boundaries = gpd.read_file("./boundary/cb_2020_us_state_500k/cb_2020_us_state_500k.shp")
-
-
+        
+        
         for shapefile in shapefiles:
             trcatbd = gpd.read_file(shapefile)
-            # Geo_id_column = 'GEOID10' if 'GEOID10' in trcatbd.columns else 'GEOID'
+            #geo_id_column = 'GEOID10' if 'GEOID10' in trcatbd.columns else 'GEOID'
             geo_id_column = 'ZCTA' if 'ZCTA' in trcatbd.columns else ('ZCTA5CE10' if 'ZCTA5CE10' in trcatbd.columns else 'ZCTA5CE20')
 
-            # Checking if the projection are matched
+            #checking if the projection are matched
             if trcatbd.crs != state_boundaries.crs:
                 state_boundaries = state_boundaries.to_crs(trcatbd.crs)
 
-            # Performing A spatial join to assign states to ZCTAs
+            # Performing a spatial join to assign states to ZCTAs
             zcta_with_states = gpd.sjoin(trcatbd, state_boundaries, how="left")
 
             for state in states:
@@ -216,8 +343,8 @@ def process_shapefiles(directory):
 
 
                 tactbd_sel = zcta_with_states[zcta_with_states['STATEFP'] == state]
-
-                # Rename 'index_right' If it exists in tactbd_sel DataFrame
+                
+                # Rename 'index_right' if it exists in tactbd_sel DataFrame
                 if 'index_right' in tactbd_sel.columns:
                     tactbd_sel = tactbd_sel.drop(columns=['index_right'])
 
@@ -239,10 +366,12 @@ def process_shapefiles(directory):
         print(f"An error occurred in {directory}: {e}")
 
 
-# Set The working directory and prepare directories list
-working_directory = "<your_path_here>"
+# Set the working directory and prepare directories list
+working_directory = '<your_path_here>'
 os.chdir(working_directory)
 
+# NHGIS ZCTA shapefile folders (one per boundary year), relative to working_directory.
+# Replace "nhgis0077" with your own NHGIS extract number (see note at the top of this file).
 directories = [
     'boundary/nhgis0077_shapefile_tl2000_us_zcta_2000/',
     'boundary/nhgis0077_shapefile_tl2010_us_zcta_2010/',
@@ -270,7 +399,7 @@ for directory in directories:
     else:
         print(f"Directory already exists: {directory}")
 
-# Use ProcessPoolExecutor To handle the multiprocessing
+# Use ProcessPoolExecutor to handle the multiprocessing
 with ProcessPoolExecutor() as executor:
     executor.map(process_shapefiles, directories)
 
@@ -278,7 +407,10 @@ print("All files processed.")
 
 
 
-# This is for city level
+
+
+
+# this is for city level
 import geopandas as gpd
 import pandas as pd
 import os
@@ -292,20 +424,20 @@ def process_shapefiles(directory):
         shapefiles = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.shp')]
 
         state_boundaries = gpd.read_file("./boundary/cb_2020_us_state_500k/cb_2020_us_state_500k.shp")
-
-
+        
+        
         for shapefile in shapefiles:
             trcatbd = gpd.read_file(shapefile)
-            # Geo_id_column = 'GEOID10' if 'GEOID10' in trcatbd.columns else 'GEOID'
+            #geo_id_column = 'GEOID10' if 'GEOID10' in trcatbd.columns else 'GEOID'
             geo_id_column = 'GEOID10' if 'GEOID10' in trcatbd.columns else 'GEOID'
 
 
-            # Checking if the projection are matched
+            #checking if the projection are matched
             if trcatbd.crs != state_boundaries.crs:
                 state_boundaries = state_boundaries.to_crs(trcatbd.crs)
                 state_boundaries.rename(columns={'GEOID': 'State'}, inplace=True)
 
-            # Performing A spatial join to assign states to ZCTAs
+            # Performing a spatial join to assign states to ZCTAs
             zcta_with_states = gpd.sjoin(trcatbd, state_boundaries, how="left")
 
             for state in states:
@@ -315,8 +447,8 @@ def process_shapefiles(directory):
 
 
                 tactbd_sel = zcta_with_states[zcta_with_states['STATEFP'] == state]
-
-                # Rename 'index_right' If it exists in tactbd_sel DataFrame
+                
+                # Rename 'index_right' if it exists in tactbd_sel DataFrame
                 if 'index_right' in tactbd_sel.columns:
                     tactbd_sel = tactbd_sel.drop(columns=['index_right'])
 
@@ -339,12 +471,13 @@ def process_shapefiles(directory):
 
 
 
-# Set The working directory and prepare directories list
-working_directory = "<your_path_here>"
+# Set the working directory and prepare directories list
+working_directory = '<your_path_here>'
 os.chdir(working_directory)
 
+# Census CBSA (metro/micro area) shapefile folders, relative to working_directory.
 directories = [
-    # 'boundary/nhgis0077_shapefile_tl2000_us_zcta_2000/',
+    #'boundary/nhgis0077_shapefile_tl2000_us_zcta_2000/',
     'boundary/2015_us_cbsa/',
     'boundary/2010_us_cbsa/',
     'boundary/2020_us_cbsa/'
@@ -371,7 +504,7 @@ for directory in directories:
     else:
         print(f"Directory already exists: {directory}")
 
-# Use ProcessPoolExecutor To handle the multiprocessing
+# Use ProcessPoolExecutor to handle the multiprocessing
 with ProcessPoolExecutor() as executor:
     executor.map(process_shapefiles, directories)
 
@@ -380,13 +513,134 @@ print("All files processed.")
 
 
 
-# Adding state and county info to Zip data
+
+# block level
+
+
+import geopandas as gpd
+import pandas as pd
+import os
+from concurrent.futures import ProcessPoolExecutor
+
+def process_shapefiles(directory):
+    try:
+        print(f"Processing directory: {directory}")
+        allDF = pd.DataFrame()
+        path = os.path.join(working_directory, directory)
+        shapefiles = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.shp')]
+
+        state_boundaries = gpd.read_file("./boundary/cb_2020_us_state_500k/cb_2020_us_state_500k.shp")
+        
+        for shapefile in shapefiles:
+            trcatbd = gpd.read_file(shapefile)
+    
+            #geo_id_column = 'GEOID10' if 'GEOID10' in trcatbd.columns else 'GEOID'
+            geo_id_column = 'GEOID10' if 'GEOID10' in trcatbd.columns else ('STFID' if 'STFID' in trcatbd.columns else 'GEOID')
+
+            # Identify appropriate GEOID column
+            geo_id_column = 'GEOID10' if 'GEOID10' in trcatbd.columns else (
+                'STFID' if 'STFID' in trcatbd.columns else 'GEOID'
+            )
+            
+            # Rename 'GEOID' to 'GEOID10' if that's the one selected
+            if geo_id_column == 'GEOID':
+                trcatbd = trcatbd.rename(columns={'GEOID': 'GEOID10'})
+                geo_id_column = 'GEOID10'
+            
+            # Rename STATEFP to STATE if present
+            if 'STATEFP' in trcatbd.columns:
+                trcatbd = trcatbd.rename(columns={'STATEFP': 'STATE'})
+
+
+            #checking if the projection are matched
+            if trcatbd.crs != state_boundaries.crs:
+                state_boundaries = state_boundaries.to_crs(trcatbd.crs)
+
+            # Performing a spatial join to assign states to ZCTAs
+            zcta_with_states = gpd.sjoin(trcatbd, state_boundaries, how="left")
+
+            for state in states:
+                subdf = DF[DF['STATE'] == state]
+                gdf = gpd.GeoDataFrame(subdf, geometry=gpd.points_from_xy(subdf.LON, subdf.LAT), crs='EPSG:4326')
+                gdf = gdf.to_crs(trcatbd.crs)
+
+
+                tactbd_sel = zcta_with_states[zcta_with_states['STATEFP'] == state]
+                
+                # Rename 'index_right' if it exists in tactbd_sel DataFrame
+                if 'index_right' in tactbd_sel.columns:
+                    tactbd_sel = tactbd_sel.drop(columns=['index_right'])
+
+
+                interdf = gpd.sjoin(gdf, tactbd_sel, how="inner")
+
+                grouped_percent = interdf.groupby(geo_id_column)['ACtype'].value_counts(normalize=True) * 100
+                grouped_percent = grouped_percent.rename('Percentage').reset_index()
+                grouped_count = interdf.groupby(geo_id_column)['ACtype'].value_counts().rename('Count').reset_index()
+
+                mergedf = pd.merge(grouped_percent, grouped_count, on=[geo_id_column, 'ACtype'])
+                allDF = pd.concat([allDF, mergedf], ignore_index=True)
+
+        year = directory[-5:-1]  # Extract year from the directory name
+        filename = f'summary_{directory.split("_")[-2]}_{year}.csv'
+        allDF.to_csv(os.path.join(working_directory, filename), index=False)
+        print(f"Data saved to {os.path.join(working_directory, filename)}")
+    except Exception as e:
+        print(f"An error occurred in {directory}: {e}")
+
+
+# Set the working directory and prepare directories list
+working_directory = '<your_path_here>'
+os.chdir(working_directory)
+
+# NHGIS block group shapefile folders (one per boundary year), relative to working_directory.
+# Replace "nhgis0080" with your own NHGIS extract number (see note at the top of this file).
+directories = [
+    'boundary/nhgis0080_shapefile_tl2000_us_blck_grp_2000/',
+    'boundary/nhgis0080_shapefile_tl2010_us_blck_grp_2010/',
+    'boundary/nhgis0080_shapefile_tl2015_us_blck_grp_2015/',
+    'boundary/nhgis0080_shapefile_tl2020_us_blck_grp_2020/',
+
+]
+
+
+df = pd.read_csv('./alltype_ac_predict_result.csv')
+df['GEOID'] = df['GEOID'].apply(lambda x: f"{int(x):011d}")
+df['GEOID'] = df['GEOID'].astype(str).str[:5]
+df['STATE'] = df['GEOID'].astype(str).str[:2]
+df.loc[df['AIRCONDITIONINGrecode'].isna() | (df['AIRCONDITIONINGrecode'] == 'Yes'), 'New_AIRCONDITIONINGrecode'] = df['finalAIRCONDITIONINGpre']
+
+
+DF = df[['STATE', 'New_AIRCONDITIONINGrecode', 'LAT', 'LON']]
+DF.rename(columns={'New_AIRCONDITIONINGrecode': 'ACtype'}, inplace=True)
+
+states = DF['STATE'].unique()  # Assume DF is loaded earlier
+
+for directory in directories:
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+        print(f"Directory created: {directory}")
+    else:
+        print(f"Directory already exists: {directory}")
+
+# Use ProcessPoolExecutor to handle the multiprocessing
+with ProcessPoolExecutor() as executor:
+    executor.map(process_shapefiles, directories)
+
+print("All files processed.")
+
+
+
+
+
+
+# adding state and county info to Zip data
 
 import geopandas as gpd
 import os
 
-# Define Paths
-working_directory = "<your_path_here>"
+# Define paths
+working_directory = '<your_path_here>/'
 
 county_paths = {
     2000: 'Data/boundary/cb_2000_us_county_500k/co99_d00.shp',
@@ -402,7 +656,7 @@ zcta_paths = {
     2020: 'Data/boundary/nhgis0077_shapefile_tl2020_us_zcta_2020/US_zcta_2020.shp'
 }
 
-# Output Directory
+# Output directory
 
 output_dir = os.path.join(working_directory, 'Data/results/intersections_csv/')
 os.makedirs(output_dir, exist_ok=True)
@@ -420,24 +674,24 @@ for year in county_paths:
     counties = gpd.read_file(county_fp)
     zctas = gpd.read_file(zcta_fp)
 
-    # Manually Set CRS if counties don't have one
+    # Manually set CRS if counties don't have one
     if counties.crs is None:
         print(f"County file for {year} has no CRS. Assigning EPSG:4269 (NAD83).")
         counties.set_crs(epsg=4269, inplace=True)
-
-    # Reproject ZCTAs To match county CRS
+    
+    # Reproject ZCTAs to match county CRS
     if zctas.crs != counties.crs:
         zctas = zctas.to_crs(counties.crs)
-
-
+    
+    
     # Match CRS
     if counties.crs != zctas.crs:
         zctas = zctas.to_crs(counties.crs)
 
-    # Spatial Intersection
+    # Spatial intersection
     intersected = gpd.overlay(zctas, counties, how='intersection')
 
-    # Determine ZCTA Column name
+    # Determine ZCTA column name
     if 'ZCTA' in zctas.columns:
         zcta_col = 'ZCTA'
     elif 'ZCTA5CE10' in zctas.columns:
@@ -445,7 +699,7 @@ for year in county_paths:
     else:
         zcta_col = 'ZCTA5CE20'
 
-    # Determine County GEOID column
+    # Determine county GEOID column
     if 'GEOID' in counties.columns:
         county_col = 'GEOID'
         intersected['GEOID'] = intersected[county_col]
@@ -458,13 +712,13 @@ for year in county_paths:
     else:
         raise ValueError(f"Cannot find GEOID columns for year {year}")
 
-    # Get ZCTA Code
+    # Get ZCTA code
     intersected['ZCTA'] = intersected[zcta_col].astype(str)
 
-    # Keep Only relevant columns
+    # Keep only relevant columns
     final_df = intersected[['GEOID', 'ZCTA']].drop_duplicates()
 
-    # Save To CSV
+    # Save to CSV
     out_fp = os.path.join(output_dir, f'key_county_zip_{year}.csv')
     final_df.to_csv(out_fp, index=False)
     print(f"Saved {out_fp}")
@@ -475,26 +729,26 @@ import pandas as pd
 import os
 
 # Directories
-intersect_dir = "<your_path_here>"
-summary_dir = "<your_path_here>"
-output_dir = "<your_path_here>"
+intersect_dir = '<your_path_here>/Data/results/intersections_csv'
+summary_dir = '<your_path_here>/Data/results'
+output_dir = '<your_path_here>/Data/results'
 
 
 os.makedirs(output_dir, exist_ok=True)
 
-years = [2000, 2010, 2015, 2020]
+years = [2000] #, 2010, 2015, 2020]
 
 for year in years:
     try:
-        # File Paths
+        # File paths
         intersect_fp = os.path.join(intersect_dir, f'key_county_zip_{year}.csv')
         summary_fp = os.path.join(summary_dir, f'summary_zcta_{year}.csv')
 
-        # Load Data
+        # Load data
         df_intersect = pd.read_csv(intersect_fp, dtype=str)
         df_summary = pd.read_csv(summary_fp, dtype=str)
 
-        # Identify ZCTA Column in summary file
+        # Identify ZCTA column in summary file
         zcta_col = None
         for candidate in ['ZCTA', 'ZCTA5CE10', 'ZCTA5CE20']:
             if candidate in df_summary.columns:
@@ -504,17 +758,17 @@ for year in years:
         if zcta_col is None:
             raise ValueError(f"No valid ZCTA column found in summary file for {year}")
 
-        # Rename To "ZCTA" for consistency
+        # Rename to "ZCTA" for consistency
         df_summary = df_summary.rename(columns={zcta_col: 'ZCTA'})
 
         # Merge
         df_merged = df_summary.merge(df_intersect, on='ZCTA', how='left')
-
-        # Round 'Percentage' To 2 decimal places
+        
+        # Round 'Percentage' to 2 decimal places
         if 'Percentage' in df_merged.columns:
             df_merged['Percentage'] = pd.to_numeric(df_merged['Percentage'], errors='coerce').round(2)
 
-        # Ensure Final column order
+        # Ensure final column order
         expected_columns = ['GEOID', 'ZCTA', 'ACtype', 'Percentage', 'Count']
         for col in expected_columns:
             if col not in df_merged.columns:
@@ -539,42 +793,50 @@ for year in years:
 import pandas as pd
 import os
 
-# Input And output paths
+# Input and output paths
 input_files = {
-    2010: "<your_path_here>",
-    2015: "<your_path_here>",
-    2020: "<your_path_here>",
+    2010: "<your_path_here>/Data/results/summary_tract_2010.csv",
+    2015: "<your_path_here>/Data/results/summary_tract_2015.csv",
+    2020: "<your_path_here>/Data/results/summary_tract_2020.csv",
 }
 
-output_dir = "<your_path_here>"
+output_dir = "<your_path_here>/Data/results/FINALdata"
 os.makedirs(output_dir, exist_ok=True)
 
-# Desired Column order
+# Desired column order
 final_columns = ['GEOIDCN', 'GEOID', 'ACtype', 'Percentage', 'Count']
 
 for year, input_path in input_files.items():
-    # Load File
-    df = pd.read_csv(input_path, dtype={"GEOID": str})
+    # Load file
+    df = pd.read_csv(input_path, dtype={"GEOID": str, "GEOID10":str})
 
-    # Filter For valid 11-digit GEOIDs
-    df = df[df["GEOID"].str.len() == 11]
+    if "GEOID" in df.columns:
+        df["GEOID"] = df["GEOID"].astype(str)
+        df["GEOIDCN"] = df["GEOID"].str[:5]
+    elif "GEOID10" in df.columns:
+        df["GEOID"] = df["GEOID10"].astype(str)
+    else:
+        raise ValueError("Neither 'GEOID' nor 'GEOID10' column found in dataframe.")
+        
+    # Filter for valid 11-digit GEOIDs
+    #df = df[df["GEOID"].str.len() == 11]
 
-    # Create GEOIDCN Column
+    # Create GEOIDCN column
     df["GEOIDCN"] = df["GEOID"].str[:5]
 
-    # Round Percentage To 2 decimal places
+    # Round Percentage to 2 decimal places
     if "Percentage" in df.columns:
         df["Percentage"] = pd.to_numeric(df["Percentage"], errors="coerce").round(2)
 
-    # Ensure All expected columns exist (fill missing ones with NA)
+    # Ensure all expected columns exist (fill missing ones with NA)
     for col in final_columns:
         if col not in df.columns:
             df[col] = pd.NA
 
-    # Reorder Columns
+    # Reorder columns
     df = df[final_columns]
 
-    # Save Output
+    # Save output
     output_path = os.path.join(output_dir, f"summary_tract_{year}.csv")
     df.to_csv(output_path, index=False)
 
@@ -582,48 +844,48 @@ for year, input_path in input_files.items():
 
 
 
-# Intersect with tract and city files
+# intersect with tract and city files
 import geopandas as gpd
 import os
 from pathlib import Path
 
-# Input Paths
+# Input paths
 cbsa_paths = {
-    2000: "<your_path_here>",
-    2010: "<your_path_here>",
-    2015: "<your_path_here>",
-    2020: "<your_path_here>",
+    2000: "<your_path_here>/Data/boundary/2000_us_msa_cmsa",
+    2010: "<your_path_here>/Data/boundary/2010_us_cbsa",
+    2015: "<your_path_here>/Data/boundary/2015_us_cbsa",
+    2020: "<your_path_here>/Data/boundary/2020_us_cbsa",
 }
 
 tract_paths = {
-    2000: "<your_path_here>",
-    2010: "<your_path_here>",
-    2015: "<your_path_here>",
-    2020: "<your_path_here>",
+    2000: "<your_path_here>/Data/boundary/nhgis0075_shapefile_tl2000_us_tract_2000",
+    2010: "<your_path_here>/Data/boundary/nhgis0075_shapefile_tl2010_us_tract_2010",
+    2015: "<your_path_here>/Data/boundary/nhgis0075_shapefile_tl2015_us_tract_2015",
+    2020: "<your_path_here>/Data/boundary/nhgis0075_shapefile_tl2020_us_tract_2020",
 }
 
 import os
 import geopandas as gpd
 from pathlib import Path
 
-output_dir = "<your_path_here>"
+output_dir = "<your_path_here>/Data/results/intersections_csv"
 os.makedirs(output_dir, exist_ok=True)
 
 for year in [2020]:#2000, 2010, 2015,
     cbsa_dir = cbsa_paths[year]
     tract_dir = tract_paths[year]
-
+    
     cbsa_shp = next(Path(cbsa_dir).glob("*.shp"), None)
     tract_shp = next(Path(tract_dir).glob("*.shp"), None)
-
+    
     if cbsa_shp is None or tract_shp is None:
         print(f"Missing shapefile for year {year}")
         continue
-
+    
     cbsa = gpd.read_file(cbsa_shp)
     tract = gpd.read_file(tract_shp)
 
-    # --- CBSA Standardization ---
+    # --- CBSA standardization ---
     if year == 2000:
         if 'MSACMSA' not in cbsa.columns:
             print(f"Skipping year {year}: missing MSACMSA")
@@ -643,7 +905,7 @@ for year in [2020]:#2000, 2010, 2015,
 
 
 
-    # --- Tract Standardization ---
+    # --- Tract standardization ---
     if year == 2000:
         tract_id_col = 'GISJOIN' if 'GISJOIN' in tract.columns else None
     else:
@@ -652,19 +914,19 @@ for year in [2020]:#2000, 2010, 2015,
     if not tract_id_col:
         print(f"Skipping year {year}: missing GEOID, GEOID10, or GISJOIN")
         continue
-
+    
     tract['GEOID'] = tract[tract_id_col].astype(str).str.zfill(11)
     tract = tract[tract['GEOID'].str.len() == 11]
     tract['GEOIDCN'] = tract['GEOID'].str[:5]
     tract = tract[['GEOID', 'GEOIDCN', 'geometry']]
-
+    
     # Match CRS
     if cbsa.crs != tract.crs:
         tract = tract.to_crs(cbsa.crs)
-
+    
     # Intersect
     intersect = gpd.overlay(tract, cbsa, how='intersection')
-
+    
     # Save
     output_fp = os.path.join(output_dir, f"key_tract_city_{year}.csv")
     intersect[['GEOIDCN', 'GEOID', 'CBSAFP', 'NAME']].to_csv(output_fp, index=False)
@@ -672,36 +934,102 @@ for year in [2020]:#2000, 2010, 2015,
 
 
 
-# Matching the  tract level AC with the city code
+# matching the  tract level AC with the city code
 
-tractlevel = ["<your_path_here>",
-              "<your_path_here>",
-              "<your_path_here>"]
+tractlevel = ['<your_path_here>/Data/results/FINALdata/summary_tract_adjusted_2010.csv',
+              '<your_path_here>/Data/results/FINALdata/summary_tract_adjusted_2015.csv', 
+              '<your_path_here>/Data/results/FINALdata/summary_tract_adjusted_2020.csv']
 
-metroindex = ["<your_path_here>",
-              "<your_path_here>",
-              "<your_path_here>"]
+metroindex = ['<your_path_here>/Data/results/intersections_csv/key_tract_city_2010.csv',
+              '<your_path_here>/Data/results/intersections_csv/key_tract_city_2015.csv',
+              '<your_path_here>/Data/results/intersections_csv/key_tract_city_2020.csv']
 
-# Output Directory
-output_dir = "<your_path_here>"
+# Output directory
+output_dir = '<your_path_here>/Data/results'
 
-# Merge And save
+# Merge and save
 for tfile, mfile in zip(tractlevel, metroindex):
     year = tfile.split('_')[-1].split('.')[0]  # Extract year from filename
-
-    # Read Data
-    df_tract = pd.read_csv(tfile)
-    df_metro = pd.read_csv(mfile)
-
-    # Merge By 'GEOID'
-    df_merged = pd.merge(df_tract, df_metro, on=['GEOID'], how='inner')
-
-    # Output Path
-    output_path = os.path.join(output_dir, f"summary_metro_{year}.csv")
-
+    
+    # Read data
+    df_tract = pd.read_csv(tfile, dtype={"GEOID": str, "GEOID10":str})
+    df_metro = pd.read_csv(mfile, dtype={"GEOID": str, "GEOID10":str})
+    
+    # Merge by 'GEOID'
+    if "GEOID" in df_tract.columns:
+        df_tract["GEOID"] = df_tract["GEOID"].astype(str)
+    elif "GEOID10" in df_tract.columns:
+        df_tract["GEOID"] = df_tract["GEOID10"].astype(str)
+    else:
+        raise ValueError("Neither 'GEOID' nor 'GEOID10' column found in dataframe.")
+        
+        
+    df_merged = pd.merge(df_tract, df_metro, on=['GEOID','GEOIDCN'], how='inner')
+    df_merged = df_merged[['GEOID','GEOIDCN','CBSAFP',	'NAME', 'ACtype',	'Adjusted_Count', 'Adjusted_Percentage'	]]
+    
+    # Output path
+    output_path = os.path.join(output_dir, f"summary_metro_adjusted{year}.csv")
+    
     # Save
     df_merged.to_csv(output_path, index=False)
     print(f"Saved merged file for {year} to: {output_path}")
 
 
+
+
+#TEST!!
+
+
+directories= ['HistoricalAC/Data/NHGIS/2010_us_cbsa',
+            'HistoricalAC/Data/NHGIS/2015_us_cbsa',
+            'HistoricalAC/Data/NHGIS/2020_us_cbsa']
+
+df = pd.read_csv('<your_path_here>/Data/results/alltype_ac_predict_result.csv')
+
+
+working_directory = '<your_path_here>'
+
+# Census CBSA (metro/micro area) shapefile folders, relative to working_directory.
+directories = [
+    #'HistoricalAC/Data/boundary/2015_us_cbsa/',
+    'HistoricalAC/Data/boundary/2010_us_cbsa/',
+    #'HistoricalAC/Data/boundary/2020_us_cbsa/',
+    'HistoricalAC/Data/boundary/2000_us_msa_cmsa/',
+
+]
+
+
+
+
+for directory in directories:
+    path = os.path.join(working_directory, directory)
+    if os.path.exists(path):
+        shapefiles = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.shp')]
+        for shapefile in shapefiles:
+            trcatbd = gpd.read_file(shapefile)
+            print(f"Loaded: {shapefile}")
+            print(trcatbd.columns)
+    else:
+        print(f"Directory does not exist: {path}")
+
+test = gpd.read_file('<your_path_here>/Data/boundary/cb_2020_us_state_500k/cb_2020_us_state_500k.shp')
+
+
+
+directories= ['<your_path_here>/Data/results/summary_tract_2010.csv',
+              '<your_path_here>/Data/results/summary_tract_2015.csv', 
+              '<your_path_here>/Data/results/summary_tract_2020.csv']
+
+directories=  ['<your_path_here>/Data/results/intersections_csv/key_tract_city_2010.csv',
+              '<your_path_here>/Data/results/intersections_csv/key_tract_city_2015.csv',
+              '<your_path_here>/Data/results/intersections_csv/key_tract_city_2020.csv']
+
+directories= ['<your_path_here>/Data/results/summary_metro_2010.csv',
+               '<your_path_here>/Data/results/summary_metro_2015.csv',
+               '<your_path_here>/Data/results/summary_metro_2020.csv']
+
+for directory in directories:
+    df = pd.read_csv(directory)
+    print(f"Loaded: {shapefile}")
+    print(df.columns)
 
