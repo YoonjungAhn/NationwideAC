@@ -1,174 +1,233 @@
-# !/usr/bin/env Python3
-# -*- Coding: utf-8 -*-
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Created on Wed Mar 12 14:14:30 2025
 
 @author: y943a214
+
+Validation: compare the predicted AC prevalence with other data sources.
+
+  1. American Housing Survey (AHS), by metro area
+  2. AHS, national, by census division (all tracts)
+  3. AHS, national, by census division (non-metro tracts only)
+  4. Sera et al. (2020), by metro area
+  5. Romitti et al. (2022), by metro area
+  6. New York City Housing and Vacancy Survey 2023 (data preparation only)
+
+Each comparison draws a scatter plot (other source on x, prediction on y) and
+prints the Pearson correlation for each AC type.
+
+Inputs (set DATA_DIR and FIG_DIR below)
+---------------------------------------
+results/summary_tract_2020.csv     tract-level AC counts by type, output of ACprob_to_county_zip.py
+boundary/...                       2020 CBSA (metro area) and 2020 census tract shapefiles (NHGIS)
+comparisondata/...                 comparison data sets (see PATHS below)
+AHS/Labels/Census_Bureau_Regions_Divisions.csv   state FIPS -> census division
 """
 
-import pandas as pd
+import math
+import os
+
 import geopandas as gpd
-import numpy as np
-
-
-# Making CBSA Data to county level
-# Ctboundary = gpd.read_file("<your_path_here>")
-# Ctboundary.rename(columns={'GEOID': 'OMB13CBSA', 'NAME':"MetroName"}, inplace=True)
-
-ctboundary = gpd.read_file("<your_path_here>")
-ctboundary.rename(columns={'GEOID': 'CBSA_GEOID', 'NAME':"MetroName"}, inplace=True)
-ctboundary=ctboundary[['CBSA_GEOID',"MetroName", 'geometry']]
-
-tracboundary = gpd.read_file("<your_path_here>")
-tracboundary= tracboundary[['GEOID', 'STATEFP', 'COUNTYFP', 'geometry']]
-
-joined = gpd.sjoin(ctboundary, tracboundary) #,  how='inner', predicate='within')
-
-
-
-ahs = pd.read_csv("<your_path_here>")
-
-df1 = pd.read_csv("<your_path_here>")
-df2 = pd.read_csv("<your_path_here>")
-metroac = pd.read_csv("<your_path_here>")
-
-predict = pd.read_csv("<your_path_here>")
-predict['GEOID'] = predict['GEOID'].astype(str).apply(lambda x: x.zfill(11))
-predict['RE_ACtype'] = np.where(predict['ACtype'] == 'NoAC', 'NoAC', 'Yes')
-
-total_counts = predict.groupby(['GEOID'])['Count'].sum().reset_index(name='Total_Count')
-grouped_data = predict.groupby(['GEOID','RE_ACtype'])['Count'].sum().rename('Count').reset_index()
-combined_data = pd.merge(grouped_data, total_counts, on=['GEOID'])
-combined_data['Percentage'] = (combined_data['Count'] / combined_data['Total_Count']) * 100
-
-
-
-predictdf= pd.merge(joined,combined_data, how='inner', on=['GEOID'])
-predictdf = predictdf.groupby(['CBSA_GEOID','RE_ACtype','MetroName'])['Percentage'].mean().reset_index(name='Predict')
-predictdf['CBSA_GEOID'] = predictdf['CBSA_GEOID'].astype(str)
-
-
-
-# Comparison with AHS
-df2 = pd.read_csv("<your_path_here>")
-df2.rename(columns={'Count': 'predict_count', 'Percentage':"predict_percentage"}, inplace=True)
-df2['OMB13CBSA'] = df2['OMB13CBSA'].astype(str)
-
-DF2 = pd.merge(df2, ctboundary, how='inner', left_on='OMB13CBSA', right_on ='CBSA_GEOID')
-
-
-ahs = pd.read_csv("<your_path_here>")
-ahs.rename(columns={'ACPrimary_Grouped':'New_AC_combine'}, inplace=True)
-
-ahs['OMB13CBSA'] = ahs['OMB13CBSA'].astype(str)
-
-mergedf = pd.merge(DF2, ahs, how='inner', on=['OMB13CBSA','New_AC_combine'])
-
-
-
-sns.despine()
-plt.rcParams.update({'font.size': 14})  # This sets the default font size for all text
-
-# Assuming Pivot_df is already loaded as shown above
-# Filter The data for each type of New_AIRCONDITIONINGrecode and create a scatter plot
-filtered_data = mergedf.loc[mergedf.New_AC_combine == "Central"]
-
-threshold = 60# This is an arbitrary threshold for demonstration purposes.
-
-# Create The scatter plot
-fig, ax = plt.subplots(figsize=(10, 6))
-
-for index, row in filtered_data.iterrows():
-    plt.scatter(row['AHSpercentage'], row['predict_percentage'], color='#2b8cbe', alpha=0.6, s=130)  # Set dot color to black
-    difference = abs(row['AHSpercentage'] - row['predict_percentage'])
-    if difference > threshold:
-        # Jiggle The annotations by adding a small random number to the position
-        offset_x = np.random.randint(0, 7)  # Random jitter in the x position
-        offset_y = np.random.randint(-15, 6)  # Random jitter in the y position
-        # Annotate With a line connecting the dot
-        plt.annotate(row['MetroName'],
-                     xy=(row['AHSpercentage'], row['predict_percentage']),  # Point of the dot
-                     xytext=(row['AHSpercentage'] + offset_x, row['predict_percentage'] + offset_y),  # Offset for text
-                     textcoords="data",
-                     ha='center',
-                     fontsize=10,
-                     arrowprops=dict(arrowstyle="-", color='gray', lw=0.5))  # Line properties
-
-# Hide Top and right spines
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-
-# Only Show bottom and left spines (x and y axes)
-ax.spines['bottom'].set_visible(True)
-ax.spines['left'].set_visible(True)
-
-plt.xlabel('American Housing Survey (2019-2023)', fontsize=20)
-plt.ylabel('Prediction', fontsize=20)
-# Plt.title('Scatter Plot for any AC')
-plt.grid(False)
-plt.tick_params(axis='both', which='major', labelsize=18)
-plt.show()
-
-
-
-
-
-sns.despine()
-plt.rcParams.update({'font.size': 14})  # This sets the default font size for all text
-
-# Assuming Pivot_df is already loaded as shown above
-# Filter The data for each type of New_AIRCONDITIONINGrecode and create a scatter plot
-filtered_data = mergedf.loc[mergedf.New_AC_combine == "NoAC"]
-
-threshold = 10# This is an arbitrary threshold for demonstration purposes.
-
-# Create The scatter plot
-fig, ax = plt.subplots(figsize=(10, 6))
-
-for index, row in filtered_data.iterrows():
-    plt.scatter(row['AHSpercentage'], row['predict_percentage'], color='#2b8cbe', alpha=0.6, s=130)  # Set dot color to black
-    difference = abs(row['AHSpercentage'] - row['predict_percentage'])
-    if difference > threshold:
-        # Jiggle The annotations by adding a small random number to the position
-        offset_x = np.random.randint(0, 6)  # Random jitter in the x position
-        offset_y = np.random.randint(0, 6)  # Random jitter in the y position
-        # Annotate With a line connecting the dot
-        plt.annotate(row['MetroName'],
-                     xy=(row['AHSpercentage'], row['predict_percentage']),  # Point of the dot
-                     xytext=(row['AHSpercentage'] + offset_x, row['predict_percentage'] + offset_y),  # Offset for text
-                     textcoords="data",
-                     ha='center',
-                     fontsize=10,
-                     arrowprops=dict(arrowstyle="-", color='gray', lw=0.5))  # Line properties
-
-# Hide Top and right spines
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-
-# Only Show bottom and left spines (x and y axes)
-ax.spines['bottom'].set_visible(True)
-ax.spines['left'].set_visible(True)
-
-plt.xlabel('American Housing Survey (2019-2023)', fontsize=20)
-plt.ylabel('Prediction', fontsize=20)
-# Plt.title('Scatter Plot for any AC')
-plt.grid(False)
-plt.tick_params(axis='both', which='major', labelsize=18)
-
-
-
-
-# Combine all the plots of AHS
-
-from adjustText import adjust_text
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import scipy.stats as stats
 import seaborn as sns
 from adjustText import adjust_text
 
-import pandas as pd
 
-# Mapping For shorter names
+# =============================================================================
+# 0. Settings: file locations
+# =============================================================================
+DATA_DIR = '<your_path_here>'  # project "Data" folder
+FIG_DIR = '<your_path_here>'   # folder for the saved figures
+
+PATHS = {
+    # Boundaries (NHGIS; replace "nhgis0075" with your own extract number)
+    'cbsa_2020': os.path.join(DATA_DIR, 'NHGIS/2020_us_cbsa/US_cbsa_2020.shp'),
+    'tract_2020': os.path.join(DATA_DIR, 'boundary/nhgis0075_shapefile_tl2020_us_tract_2020/US_tract_2020.shp'),
+    # Predictions: tract-level AC counts by type (output of ACprob_to_county_zip.py)
+    'predict_tract': os.path.join(DATA_DIR, 'results/summary_tract_2020.csv'),
+    # Predictions summarized by metro area (OMB13CBSA, New_AC_combine, Count, Percentage)
+    'predict_metro': os.path.join(DATA_DIR, 'comparisondata/AC_prediction_metro_central_no_others.csv'),
+    # American Housing Survey (https://www.census.gov/programs-surveys/ahs.html), share of homes by AC type
+    'ahs_metro': os.path.join(DATA_DIR, 'comparisondata/AHS_2019_2021.csv'),
+    'ahs_national': os.path.join(DATA_DIR, 'comparisondata/AHS_national_2021.csv'),
+    'ahs_national_nometro': os.path.join(DATA_DIR, 'comparisondata/AHS_national_noMetro_2021.csv'),
+    'divisions': os.path.join(DATA_DIR, 'AHS/Labels/Census_Bureau_Regions_Divisions.csv'),
+    # Sera et al. (2020): average AC prevalence by city
+    'sera': os.path.join(DATA_DIR, 'comparisondata/sara.csv'),
+    # Romitti et al. (2022): AC probability by tract and metro area
+    'romitti': os.path.join(DATA_DIR, 'comparisondata/US_metro_ac_prob-1.csv'),
+    # NYC Housing and Vacancy Survey 2023 public use files
+    'nyc_allunits': os.path.join(DATA_DIR, 'comparisondata/nyc data/allunits_puf_23.csv'),
+    'nyc_occupied': os.path.join(DATA_DIR, 'comparisondata/nyc data/occupied_puf_23.csv'),
+}
+
+# Plot titles for each AC type
+AC_TITLES = {'Central': 'Central AC', 'Others': 'Other AC', 'NoAC': 'No AC'}
+AC_TYPES = ['Central', 'Others', 'NoAC']
+
+# AHS census division codes -> names
+DIVISION_MAPPING = {
+    1: "New England", 2: "Middle Atlantic", 3: "East North Central",
+    4: "West North Central", 5: "South Atlantic", 6: "East South Central",
+    7: "West South Central", 8: "Mountain", 9: "Pacific"
+}
+
+plt.rcParams.update({'font.size': 14})
+
+
+# =============================================================================
+# Helper functions
+# =============================================================================
+def load_cbsa_tract_join():
+    """Return the 2020 CBSA boundaries and every 2020 tract that intersects a CBSA."""
+    ctboundary = gpd.read_file(PATHS['cbsa_2020'])
+    ctboundary.rename(columns={'GEOID': 'CBSA_GEOID', 'NAME': "MetroName"}, inplace=True)
+    ctboundary = ctboundary[['CBSA_GEOID', "MetroName", 'geometry']]
+
+    tracboundary = gpd.read_file(PATHS['tract_2020'])
+    tracboundary = tracboundary[['GEOID', 'STATEFP', 'COUNTYFP', 'geometry']]
+
+    joined = gpd.sjoin(ctboundary, tracboundary)
+    return ctboundary, joined
+
+
+def load_tract_predictions():
+    """Tract-level predicted AC counts with an 11-digit GEOID."""
+    predict = pd.read_csv(PATHS['predict_tract'])
+    predict['GEOID'] = predict['GEOID'].astype(str).apply(lambda x: x.zfill(11))
+    return predict
+
+
+def load_divisions():
+    """State FIPS (2 digits) -> census division."""
+    division = pd.read_csv(PATHS['divisions'])
+    division['StateFIPS'] = division['StateFIPS'].astype(str).apply(lambda x: x.zfill(2))
+    return division
+
+
+def load_ahs_national(path):
+    """AHS national table with division names instead of codes."""
+    ahs = pd.read_csv(path)
+    ahs['DIVISION'] = ahs['DIVISION'].replace(DIVISION_MAPPING)
+    return ahs
+
+
+def percent_by_division(tracts):
+    """Share of each AC type (Evaporative Cooler counted as Others) by census division."""
+    grouped_data = tracts.groupby('DIVISION')['New_AC_combine'].value_counts().rename('Count')
+    grouped_percentage = tracts.groupby('DIVISION')['New_AC_combine'].value_counts(normalize=True).rename('Percentage') * 100
+    return pd.DataFrame({'Count': grouped_data, 'predict_percentage': grouped_percentage}).reset_index()
+
+
+def correlation_table(mergedf, x='AHSpercentage', y='predict_percentage', group='New_AC_combine'):
+    """Pearson correlation and p-value between the two sources, for each AC type."""
+    results = []
+    for ac_type in mergedf[group].unique():
+        filtered_data = mergedf[mergedf[group] == ac_type]
+        corr_coef, p_value = stats.pearsonr(filtered_data[x], filtered_data[y])
+        results.append({'AC Type': ac_type, 'Correlation Coefficient': corr_coef, 'P-Value': p_value})
+    results_df = pd.DataFrame(results)
+    print(results_df)
+    return results_df
+
+
+def plot_ahs_panels(mergedf, color_col, color_names, legend_title, ncol, figsize, wspace, outfile):
+    """Three scatter plots (Central, Other, No AC): AHS on x, prediction on y, colored by color_col."""
+    sns.despine()
+    fig, axes = plt.subplots(1, 3, figsize=figsize)
+
+    colors = plt.cm.inferno(np.linspace(0, 1, len(color_names)))
+    color_map = dict(zip(color_names, colors))
+
+    for ax, ac_type in zip(axes.flatten(), AC_TYPES):
+        filtered_data = mergedf[mergedf['New_AC_combine'] == ac_type]
+
+        # Same x and y range, rounded up to the next 10 (+5 margin)
+        current_max = max(filtered_data['AHSpercentage'].max(), filtered_data['predict_percentage'].max())
+        max_value = (math.ceil(current_max / 10.0) * 10) + 5
+
+        for _, row in filtered_data.iterrows():
+            ax.scatter(row['AHSpercentage'], row['predict_percentage'],
+                       color=color_map[row[color_col]], marker='o', alpha=0.6, s=130)
+
+        ax.set_xlim(-2, max_value)
+        ax.set_ylim(-2, max_value)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.set_xlabel('American Housing Survey (2019-2023)', fontsize=20)
+        ax.set_ylabel('Prediction', fontsize=20)
+        ax.set_title(AC_TITLES[ac_type], fontsize=30)
+        ax.tick_params(axis='both', which='major', labelsize=18)
+        ax.grid(False)
+
+    # One legend below the middle panel
+    handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map[name], markersize=10, label=name)
+               for name in color_names]
+    legend = axes[1].legend(handles=handles, loc='upper center', bbox_to_anchor=(0.5, -0.25),
+                            fancybox=False, shadow=False, ncol=ncol, title=legend_title,
+                            fontsize=23, title_fontsize=25)
+    legend.get_frame().set_linewidth(0.0)
+
+    plt.subplots_adjust(wspace=wspace)
+    plt.tight_layout()
+    fig.savefig(os.path.join(FIG_DIR, outfile), dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+def plot_labeled_scatter(data, x, y, threshold, xlabel, outfile, **adjust_kwargs):
+    """Scatter plot of two sources; metro areas that differ by more than `threshold` are labeled."""
+    sns.set_style("white")
+    sns.despine()
+    fig, ax = plt.subplots(figsize=(8, 6))
+    texts = []
+
+    for _, row in data.iterrows():
+        plt.scatter(row[x], row[y], color='#2b8cbe', alpha=0.6, s=130)
+        if abs(row[x] - row[y]) > threshold:
+            texts.append(plt.text(row[x], row[y], row['MetroName'], ha='center', fontsize=10))
+
+    # Move labels so they do not overlap
+    adjust_text(texts, arrowprops=dict(arrowstyle='-', color='gray', lw=0.5), **adjust_kwargs)
+
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    plt.xlabel(xlabel, fontsize=20)
+    plt.ylabel('Prediction', fontsize=20)
+    plt.grid(False)
+    plt.tick_params(axis='both', which='major', labelsize=18)
+
+    fig.savefig(os.path.join(FIG_DIR, outfile), dpi=300, bbox_inches='tight')
+    plt.show()
+
+
+# =============================================================================
+# Shared data
+# =============================================================================
+ctboundary, joined = load_cbsa_tract_join()   # metro areas and the tracts inside them
+divisions = load_divisions()
+
+
+# =============================================================================
+# 1. AHS by metro area
+# =============================================================================
+# Predicted share of each AC type by metro area
+df2 = pd.read_csv(PATHS['predict_metro'])
+df2.rename(columns={'Count': 'predict_count', 'Percentage': "predict_percentage"}, inplace=True)
+df2['OMB13CBSA'] = df2['OMB13CBSA'].astype(str)
+DF2 = pd.merge(df2, ctboundary, how='inner', left_on='OMB13CBSA', right_on='CBSA_GEOID')
+
+# AHS share of each AC type by metro area
+ahs = pd.read_csv(PATHS['ahs_metro'])
+ahs.rename(columns={'ACPrimary_Grouped': 'New_AC_combine'}, inplace=True)
+ahs['OMB13CBSA'] = ahs['OMB13CBSA'].astype(str)
+
+mergedf = pd.merge(DF2, ahs, how='inner', on=['OMB13CBSA', 'New_AC_combine'])
+
+# Shorter metro names for the legend
 name_mapping = {
     'Baltimore-Columbia-Towson, MD': 'Baltimore, MD',
     'Birmingham-Hoover, AL': 'Birmingham, AL',
@@ -191,708 +250,155 @@ name_mapping = {
     'San Jose-Sunnyvale-Santa Clara, CA': 'Silicon Valley, CA',
     'Tampa-St. Petersburg-Clearwater, FL': 'Tampa Bay, FL'
 }
-
-# Apply Mapping to create a new column
 mergedf['ShortName'] = mergedf['MetroName'].map(name_mapping)
 
-print(filtered_data)
-
-
-sns.despine()
-plt.rcParams.update({'font.size': 14})  # This sets the default font size for all text
-
-# Unique Values for New_AC_combine
-unique_ac_types = ['Central', 'Others', 'NoAC']
-# Custom Thresholds for each type
-thresholds = {'Central': 10, 'NoAC': 5, 'Others': 0}
-
-# Mapping AC Types to more descriptive titles
-ac_titles = {
-    'Central': 'Central AC',
-    'Others': 'Other AC',
-    'NoAC': 'No AC'
-}
-
-# Create A figure with 1 row and 3 columns
-fig, axes = plt.subplots(1, 3, figsize=(30, 10))  # Adjust size as needed
-
-# Loop Through each type and corresponding axis
-for ax, ac_type in zip(axes.flatten(), unique_ac_types):
-    filtered_data = mergedf[mergedf['New_AC_combine'] == ac_type]
-    texts = []
-
-    for index, row in filtered_data.iterrows():
-        ax.scatter(row['AHSpercentage'], row['predict_percentage'], color='#2b8cbe', alpha=0.6, s=130)
-        difference = abs(row['AHSpercentage'] - row['predict_percentage'])
-        if difference > thresholds[ac_type]:
-            texts.append(ax.text(row['AHSpercentage'], row['predict_percentage'], row['ShortName'],
-                                 ha='center', fontsize=15))
-
-    # Adjust Texts to minimize overlaps
-    adjust_text(texts, arrowprops=dict(arrowstyle="-", color='gray', lw=0.5), ax=ax)
-
-    # Hide Top and right spines
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-
-    # Only Show bottom and left spines (x and y axes)
-    ax.spines['bottom'].set_visible(True)
-    ax.spines['left'].set_visible(True)
-
-    ax.set_xlabel('American Housing Survey (2019-2023)', fontsize=20)
-    ax.set_ylabel('Prediction', fontsize=20)
-    ax.set_title(ac_titles[ac_type], fontsize=30)
-    ax.tick_params(axis='both', which='major', labelsize=18)
-    ax.grid(False)
-
-plt.tight_layout()
-plt.show()
-
-
-
-# One way to do it is to make each citieis have differnt colors.
-import matplotlib.pyplot as plt
-import numpy as np
-import seaborn as sns
-from adjustText import adjust_text
-import math
-
-# Unique Values for New_AC_combine
-unique_ac_types = ['Central', 'Others', 'NoAC']
-# Custom Thresholds for each type
-thresholds = {'Central': 10, 'NoAC': 5, 'Others': 10}
-
-# Mapping AC Types to more descriptive titles
-ac_titles = {
-    'Central': 'Central AC',
-    'Others': 'Other AC',
-    'NoAC': 'No AC'
-}
-
-
-sns.despine()
-plt.rcParams.update({'font.size': 14})  # Sets the default font size for all text
-
-# Create A figure with 1 row and 3 columns
-fig, axes = plt.subplots(1, 3, figsize=(28, 8))  # Adjust size as needed
-
-# Second Loop to plot data with adjusted axes
-for ax, ac_type in zip(axes.flatten(), unique_ac_types):
-    filtered_data = mergedf[mergedf['New_AC_combine'] == ac_type]
-    current_max = max( filtered_data['AHSpercentage'].max(), filtered_data['predict_percentage'].max())
-
-    max_value = math.ceil(current_max / 10.0) * 10
-
-
-    print(max_value)
-
-    texts = []
-
-    for index, row in filtered_data.iterrows():
-        ax.scatter(row['AHSpercentage'], row['predict_percentage'], color='#2b8cbe', alpha=0.6, s=130)
-        difference = abs(row['AHSpercentage'] - row['predict_percentage'])
-        if difference > thresholds[ac_type]:
-            texts.append(ax.text(row['AHSpercentage'], row['predict_percentage'], row['ShortName'],
-                                 ha='center', fontsize=15))
-
-    adjust_text(texts,
-            arrowprops=dict(arrowstyle="-", color='gray', lw=0.5),
-            ax=ax,
-            expand_points=(2, 2),  # Increase from default values to give more space around points
-            expand_text=(1000, 1000),  # Increase to give more space between texts
-            force_text=1000,  # Stronger force to push texts apart
-            force_points=300,  # Stronger force to push texts away from points
-            autoalign='y',  # Align texts vertically to save horizontal space
-            only_move={'points':'y', 'text':'y', 'objects':'xy'},  # Allow more flexible movement
-            precision=0.1  # Lower precision for faster computation but might be less precise in placement
-            )         # Controls the precision of the overlap prevention algorithm
-
-
-    # Set Uniform axes limits based on the maximum value found
-    ax.set_xlim(0, max_value)
-    ax.set_ylim(0, max_value)
-
-    # Hide Top and right spines
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-
-    # Only Show bottom and left spines (x and y axes)
-    ax.spines['bottom'].set_visible(True)
-    ax.spines['left'].set_visible(True)
-
-    # Set Axis labels and title
-    ax.set_xlabel('American Housing Survey (2019-2023)', fontsize=20)
-    ax.set_ylabel('Prediction', fontsize=20)
-    ax.set_title(ac_titles[ac_type], fontsize=30)
-    ax.tick_params(axis='both', which='major', labelsize=18)
-    ax.grid(False)
-
-plt.tight_layout()
-
-plt.show()
-
-
-
-
-
-
-# Making legend as city names
-
-import matplotlib.pyplot as plt
-import numpy as np
-import seaborn as sns
-import math
-
-
-# Unique Values for New_AC_combine
-unique_ac_types = ['Central', 'Others', 'NoAC']
-# Custom Thresholds for each type
-thresholds = {'Central': 10, 'NoAC': 5, 'Others': 10}
-
-# Mapping AC Types to more descriptive titles
-ac_titles = {
-    'Central': 'Central AC',
-    'Others': 'Other AC',
-    'NoAC': 'No AC'
-}
-
-
-sns.despine()
-plt.rcParams.update({'font.size': 14})  # Sets the default font size for all text
-
-# Create A figure with 1 row and 3 columns
-fig, axes = plt.subplots(1, 3, figsize=(20, 11))  # Adjust size as needed
-
-# Change The color palette here (e.g., 'plasma', 'inferno', 'magma', 'cividis')
-colors = plt.cm.inferno(np.linspace(0, 1, len(mergedf['ShortName'].unique()))) #inferno, magma, or cividis.
-color_map = dict(zip(mergedf['ShortName'].unique(), colors))
-
-# Plot Data
-for ax, ac_type in zip(axes.flatten(), unique_ac_types):
-    filtered_data = mergedf[mergedf['New_AC_combine'] == ac_type]
-    current_max = max(filtered_data['AHSpercentage'].max(), filtered_data['predict_percentage'].max())
-    max_value = (math.ceil(current_max / 10.0) * 10)+5
-
-    for index, row in filtered_data.iterrows():
-        color = color_map[row['ShortName']]
-        ax.scatter(row['AHSpercentage'], row['predict_percentage'], color=color, marker='o', alpha=0.6, s=130)
-
-    # Set Axis limits
-    ax.set_xlim(-2, max_value)
-    ax.set_ylim(-2, max_value)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['bottom'].set_visible(True)
-    ax.spines['left'].set_visible(True)
-    ax.set_xlabel('American Housing Survey (2019-2023)', fontsize=20)
-    ax.set_ylabel('Prediction', fontsize=20)
-    ax.set_title(ac_titles[ac_type], fontsize=30)
-    ax.tick_params(axis='both', which='major', labelsize=18)
-    ax.grid(False)
-
-# Add A legend without a border and organized into 3 rows and 5 columns
-handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=color, markersize=10, label=name)
-           for name, color in color_map.items()]
-legend = axes[1].legend(handles=handles, loc='upper center', bbox_to_anchor=(0.5, -0.25), fancybox=False, shadow=False, ncol=4, title="City Names", fontsize=23, title_fontsize=25)
-legend.get_frame().set_linewidth(0.0)
-
-
-plt.subplots_adjust(wspace=-1.2)  # Adjust the space between plots; decrease to bring them closer
-plt.tight_layout()
-fig.savefig("<your_path_here>", dpi=300, bbox_inches='tight')
-
-plt.show()
-
-import pandas as pd
-import scipy.stats as stats
-
-# Assuming Mergedf is your main DataFrame
-# Ensure That unique_ac_types is defined, e.g.:
-unique_ac_types = mergedf['New_AC_combine'].unique()
-
-# Initialize A list to hold the results
-results = []
-
-# Loop Through each AC type and calculate correlation coefficient and p-value
-for ac_type in unique_ac_types:
-    filtered_data = mergedf[mergedf['New_AC_combine'] == ac_type]
-    corr_coef, p_value = stats.pearsonr(filtered_data['AHSpercentage'], filtered_data['predict_percentage'])
-    results.append({
-        'AC Type': ac_type,
-        'Correlation Coefficient': corr_coef,
-        'P-Value': p_value
-    })
-
-# Convert The results list to a DataFrame for easier viewing
-results_df = pd.DataFrame(results)
-
-# Print The results DataFrame
-print(results_df)
-
-
-
-
-# National AHS Level all of them
-ahs = pd.read_csv("<your_path_here>")
-
-# Create A mapping dictionary for division codes to names
-division_mapping = {
-    1: "New England",
-    2: "Middle Atlantic",
-    3: "East North Central",
-    4: "West North Central",
-    5: "South Atlantic",
-    6: "East South Central",
-    7: "West South Central",
-    8: "Mountain",
-    9: "Pacific"
-}
-# Replace The 'DIVISON' column values using the mapping dictionary
-ahs['DIVISION'] = ahs['DIVISION'].replace(division_mapping)
-
-
-
-df3 = pd.read_csv("<your_path_here>")
-
-df3['GEOID'] = df3['GEOID'].astype(str).apply(lambda x: x.zfill(11))
+plot_ahs_panels(mergedf, color_col='ShortName', color_names=list(mergedf['ShortName'].unique()),
+                legend_title="City Names", ncol=4, figsize=(20, 11), wspace=-1.2,
+                outfile='Comparison_AHS_metro.png')
+correlation_table(mergedf)
+
+
+# =============================================================================
+# 2. AHS national, by census division (all tracts)
+# =============================================================================
+df3 = load_tract_predictions()
 df3['StateFIPS'] = df3['GEOID'].str[0:2]
-df3['New_AC_combine']=df3.ACtype.replace('Evaporative Cooler', 'Others')
+df3['New_AC_combine'] = df3.ACtype.replace('Evaporative Cooler', 'Others')
+divisiondf = pd.merge(df3, divisions, on='StateFIPS')
 
-division =pd.read_csv("<your_path_here>")
-division['StateFIPS'] = division['StateFIPS'].astype(str).apply(lambda x: x.zfill(2))
-
-divisiondf = pd.merge(df3,division, on ='StateFIPS' )
-
-
-grouped_data = divisiondf.groupby('DIVISION')['New_AC_combine'].value_counts().rename('Count')
-grouped_percentage = divisiondf.groupby('DIVISION')['New_AC_combine'].value_counts(normalize=True).rename('Percentage') * 100
-
-combined_data = pd.DataFrame({
-    'Count': grouped_data,
-    'predict_percentage': grouped_percentage
-}).reset_index()
-
+combined_data = percent_by_division(divisiondf)
 print(combined_data)
 
-mergedf= pd.merge(ahs,combined_data, left_on =['DIVISION','ACPrimary_Grouped'] ,right_on = ['DIVISION','New_AC_combine'])
-
-
-
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-import math
-
-sns.despine()
-plt.rcParams.update({'font.size': 14})  # Sets default font size
-
-# Create Figure
-fig, axes = plt.subplots(1, 3, figsize=(20, 10))
-
-# Sort DIVISION Names alphabetically
-sorted_divisions = sorted(mergedf['DIVISION'].unique())
-
-# Create A color map using the sorted divisions
-colors = plt.cm.inferno(np.linspace(0, 1, len(sorted_divisions)))
-color_map = dict(zip(sorted_divisions, colors))
-
-unique_ac_types = ['Central', 'Others', 'NoAC']
-
-# Plot Each subplot
-for ax, ac_type in zip(axes.flatten(), unique_ac_types):
-    filtered_data = mergedf[mergedf['New_AC_combine'] == ac_type]
-    current_max = max(filtered_data['AHSpercentage'].max(), filtered_data['predict_percentage'].max())
-    max_value = (math.ceil(current_max / 10.0) * 10) + 5
-
-    for index, row in filtered_data.iterrows():
-        color = color_map[row['DIVISION']]
-        ax.scatter(row['AHSpercentage'], row['predict_percentage'], color=color, marker='o', alpha=0.6, s=130)
-
-    ax.set_xlim(-2, max_value)
-    ax.set_ylim(-2, max_value)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.set_xlabel('American Housing Survey (2019–2023)', fontsize=20)
-    ax.set_ylabel('Prediction', fontsize=20)
-    ax.set_title(ac_titles[ac_type], fontsize=30)
-    ax.tick_params(axis='both', which='major', labelsize=18)
-    ax.grid(False)
-
-# Create Sorted legend
-handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map[name], markersize=10, label=name)
-           for name in sorted_divisions]
-legend = axes[1].legend(handles=handles, loc='upper center', bbox_to_anchor=(0.5, -0.25),
-                        fancybox=False, shadow=False, ncol=3, title="Division",
-                        fontsize=23, title_fontsize=25)
-legend.get_frame().set_linewidth(0.0)
-
-plt.subplots_adjust(wspace=-1)
-plt.tight_layout()
-fig.savefig("<your_path_here>",
-            dpi=300, bbox_inches='tight')
-plt.show()
-
-
-
-
-import pandas as pd
-import scipy.stats as stats
-
-# Assuming Mergedf is your main DataFrame
-# Ensure That unique_ac_types is defined, e.g.:
-unique_ac_types = mergedf['New_AC_combine'].unique()
-
-# Initialize A list to hold the results
-results = []
-
-# Loop Through each AC type and calculate correlation coefficient and p-value
-for ac_type in unique_ac_types:
-    filtered_data = mergedf[mergedf['New_AC_combine'] == ac_type]
-    corr_coef, p_value = stats.pearsonr(filtered_data['AHSpercentage'], filtered_data['predict_percentage'])
-    results.append({
-        'AC Type': ac_type,
-        'Correlation Coefficient': corr_coef,
-        'P-Value': p_value
-    })
-
-# Convert The results list to a DataFrame for easier viewing
-results_df = pd.DataFrame(results)
-
-# Print The results DataFrame
-print(results_df)
-
-
-
-
-
-
-
-# National AHS Level all of no metro level
-ctboundary = gpd.read_file("<your_path_here>")
-ctboundary = gpd.read_file("<your_path_here>")
-ctboundary.rename(columns={'GEOID': 'CBSA_GEOID', 'NAME':"MetroName"}, inplace=True)
-ctboundary=ctboundary[['CBSA_GEOID',"MetroName", 'geometry']]
-
-
-tracboundary = gpd.read_file("<your_path_here>")
-tracboundary= tracboundary[['GEOID', 'STATEFP', 'COUNTYFP', 'geometry']]
-
-joined = gpd.sjoin(ctboundary, tracboundary) #,  how='inner', predicate='within')
-joineddf = pd.DataFrame(joined[[ 'GEOID','CBSA_GEOID', 'MetroName','STATEFP']])
-joineddf['GEOIDCN']= joineddf.GEOID.str[0:5]
-joineddf.GEOIDCN.unique()
-
-predict = pd.read_csv("<your_path_here>")
-predict['GEOID'] = predict['GEOID'].astype(str).apply(lambda x: x.zfill(11))
-predict['GEOIDCN'] =predict.GEOID.str[0:5]
-predict['New_AC_combine']=predict.ACtype.replace('Evaporative Cooler', 'Others')
-
-
-# Getting Unique GEOIDCN from joineddf
-unique_geo_ids = joineddf['GEOIDCN'].unique()
-
-# Filtering Predict to keep rows where GEOIDCN is not in the unique GEOIDCN from joineddf
-filtered_predict = predict[~predict['GEOIDCN'].isin(unique_geo_ids)]
-filtered_predict['StateFIPS'] =filtered_predict.GEOID.str[0:2]
-
-
-division =pd.read_csv("<your_path_here>")
-division['StateFIPS'] = division['StateFIPS'].astype(str).apply(lambda x: x.zfill(2))
-
-divisiondf = pd.merge(filtered_predict,division, on ='StateFIPS', how='left' )
-
-
-grouped_data = divisiondf.groupby('DIVISION')['New_AC_combine'].value_counts().rename('Count')
-grouped_percentage = divisiondf.groupby('DIVISION')['New_AC_combine'].value_counts(normalize=True).rename('Percentage') * 100
-
-combined_data = pd.DataFrame({
-    'Count': grouped_data,
-    'predict_percentage': grouped_percentage
-}).reset_index()
-
-
-ahs = pd.read_csv("<your_path_here>")
-
-# Create A mapping dictionary for division codes to names
-division_mapping = {
-    1: "New England",
-    2: "Middle Atlantic",
-    3: "East North Central",
-    4: "West North Central",
-    5: "South Atlantic",
-    6: "East South Central",
-    7: "West South Central",
-    8: "Mountain",
-    9: "Pacific"
-}
-# Replace The 'DIVISON' column values using the mapping dictionary
-ahs['DIVISION'] = ahs['DIVISION'].replace(division_mapping)
-
-
-
-mergedf= pd.merge(ahs,combined_data, left_on =['DIVISION','ACPrimary_Grouped'] ,right_on = ['DIVISION','New_AC_combine'])
-
-
-
-sns.despine()
-plt.rcParams.update({'font.size': 14})  # Sets default font size
-
-# Create Figure
-fig, axes = plt.subplots(1, 3, figsize=(20, 10))
-
-# Sort DIVISION Names alphabetically
-sorted_divisions = sorted(mergedf['DIVISION'].unique())
-
-# Create A color map using the sorted divisions
-colors = plt.cm.inferno(np.linspace(0, 1, len(sorted_divisions)))
-color_map = dict(zip(sorted_divisions, colors))
-
-unique_ac_types = ['Central', 'Others', 'NoAC']
-
-
-
-# Plot Data
-for ax, ac_type in zip(axes.flatten(), unique_ac_types):
-    filtered_data = mergedf[mergedf['New_AC_combine'] == ac_type]
-    current_max = max(filtered_data['AHSpercentage'].max(), filtered_data['predict_percentage'].max())
-    max_value = (math.ceil(current_max / 10.0) * 10)+5
-
-    for index, row in filtered_data.iterrows():
-        color = color_map[row['DIVISION']]
-        ax.scatter(row['AHSpercentage'], row['predict_percentage'], color=color, marker='o', alpha=0.6, s=130)
-
-    # Set Axis limits
-    ax.set_xlim(-2, max_value)
-    ax.set_ylim(-2, max_value)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['bottom'].set_visible(True)
-    ax.spines['left'].set_visible(True)
-    ax.set_xlabel('American Housing Survey (2019-2023)', fontsize=20)
-    ax.set_ylabel('Prediction', fontsize=20)
-    ax.set_title(ac_titles[ac_type], fontsize=30)
-    ax.tick_params(axis='both', which='major', labelsize=18)
-    ax.grid(False)
-
-
-# Create Sorted legend
-handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=color_map[name], markersize=10, label=name)
-           for name in sorted_divisions]
-legend = axes[1].legend(handles=handles, loc='upper center', bbox_to_anchor=(0.5, -0.25),
-                        fancybox=False, shadow=False, ncol=3, title="Division",
-                        fontsize=23, title_fontsize=25)
-legend.get_frame().set_linewidth(0.0)
-
-plt.subplots_adjust(wspace=-1)
-plt.tight_layout()
-
-fig.savefig("<your_path_here>", dpi=300, bbox_inches='tight')
-
-plt.show()
-
-
-
-import pandas as pd
-import scipy.stats as stats
-
-# Assuming Mergedf is your main DataFrame
-# Ensure That unique_ac_types is defined, e.g.:
-unique_ac_types = mergedf['New_AC_combine'].unique()
-
-# Initialize A list to hold the results
-results = []
-
-# Loop Through each AC type and calculate correlation coefficient and p-value
-for ac_type in unique_ac_types:
-    filtered_data = mergedf[mergedf['New_AC_combine'] == ac_type]
-    corr_coef, p_value = stats.pearsonr(filtered_data['AHSpercentage'], filtered_data['predict_percentage'])
-    results.append({
-        'AC Type': ac_type,
-        'Correlation Coefficient': corr_coef,
-        'P-Value': p_value
-    })
-
-# Convert The results list to a DataFrame for easier viewing
-results_df = pd.DataFrame(results)
-
-# Print The results DataFrame
-print(results_df)
-
-
-
-
-
-# Comparison With SARA et al
-import pandas as pd
-
-ctboundary = gpd.read_file("<your_path_here>")
-ctboundary.rename(columns={'GEOID': 'CBSA_GEOID', 'NAME':"MetroName"}, inplace=True)
-ctboundary=ctboundary[['CBSA_GEOID',"MetroName", 'geometry']]
-
-tracboundary = gpd.read_file("<your_path_here>")
-tracboundary= tracboundary[['GEOID', 'STATEFP', 'COUNTYFP', 'geometry']]
-
-joined = gpd.sjoin(ctboundary, tracboundary) #,  how='inner', predicate='within')
-joined = joined[['GEOID', 'CBSA_GEOID',"MetroName",]]
-
-
-# Assuming 'ctboundary' And 'table2' are already defined dataframes
-saradf = pd.read_csv("<your_path_here>")
-
-# Step 3: Create A 'MetroName' in table2 by combining 'City' and 'State' columns
+ahs = load_ahs_national(PATHS['ahs_national'])
+mergedf = pd.merge(ahs, combined_data, left_on=['DIVISION', 'ACPrimary_Grouped'], right_on=['DIVISION', 'New_AC_combine'])
+
+plot_ahs_panels(mergedf, color_col='DIVISION', color_names=sorted(mergedf['DIVISION'].unique()),
+                legend_title="Division", ncol=3, figsize=(20, 10), wspace=-1,
+                outfile='Comparison_AHS_national_all.png')
+correlation_table(mergedf)
+
+
+# =============================================================================
+# 3. AHS national, by census division (non-metro tracts only)
+# =============================================================================
+# Counties that contain at least one metro-area tract
+joineddf = pd.DataFrame(joined[['GEOID', 'CBSA_GEOID', 'MetroName', 'STATEFP']])
+joineddf['GEOIDCN'] = joineddf.GEOID.str[0:5]
+metro_counties = joineddf['GEOIDCN'].unique()
+
+# Keep tracts in counties outside every metro area
+predict = load_tract_predictions()
+predict['GEOIDCN'] = predict.GEOID.str[0:5]
+predict['New_AC_combine'] = predict.ACtype.replace('Evaporative Cooler', 'Others')
+filtered_predict = predict[~predict['GEOIDCN'].isin(metro_counties)].copy()
+filtered_predict['StateFIPS'] = filtered_predict.GEOID.str[0:2]
+
+divisiondf = pd.merge(filtered_predict, divisions, on='StateFIPS', how='left')
+combined_data = percent_by_division(divisiondf)
+
+ahs = load_ahs_national(PATHS['ahs_national_nometro'])
+mergedf = pd.merge(ahs, combined_data, left_on=['DIVISION', 'ACPrimary_Grouped'], right_on=['DIVISION', 'New_AC_combine'])
+
+plot_ahs_panels(mergedf, color_col='DIVISION', color_names=sorted(mergedf['DIVISION'].unique()),
+                legend_title="Division", ncol=3, figsize=(20, 10), wspace=-1,
+                outfile='Comparison_AHS_national_non_metro.png')
+correlation_table(mergedf)
+
+
+# =============================================================================
+# 4. Sera et al. (2020), by metro area (Central AC)
+# =============================================================================
+joined_ids = joined[['GEOID', 'CBSA_GEOID', "MetroName"]]
+
+# Match Sera et al. cities to CBSA names ("City, ST")
+saradf = pd.read_csv(PATHS['sera'])
 saradf['MetroName'] = saradf['City'].str.strip().str.title() + ', ' + saradf['State'].str.strip()
+mergeddf = pd.merge(ctboundary, saradf, on='MetroName', how='right').drop(columns=['geometry'])
 
-
-mergeddf = pd.merge(ctboundary, saradf, on='MetroName', how='right')
-mergeddf.drop(columns=['geometry'], inplace=True)
-
-
-predict = pd.read_csv("<your_path_here>")
-predict['GEOID'] = predict['GEOID'].astype(str).apply(lambda x: x.zfill(11))
+# Predicted share of each AC type by tract, then averaged over the tracts of each metro area
+predict = load_tract_predictions()
 total_counts = predict.groupby(['GEOID'])['Count'].sum().reset_index(name='Total_Count')
-grouped_data = predict.groupby(['GEOID','ACtype'])['Count'].sum().rename('predict_count').reset_index()
+grouped_data = predict.groupby(['GEOID', 'ACtype'])['Count'].sum().rename('predict_count').reset_index()
 combined_data = pd.merge(grouped_data, total_counts, on=['GEOID'])
 combined_data['predict_percentage'] = (combined_data['predict_count'] / combined_data['Total_Count']) * 100
 
-
-predictdf= pd.merge(joined,combined_data, how='inner', on=['GEOID'])
-predictdf = predictdf.groupby(['CBSA_GEOID','ACtype','MetroName'])['predict_percentage'].mean().reset_index(name='predict_percentage')
+predictdf = pd.merge(joined_ids, combined_data, how='inner', on=['GEOID'])
+predictdf = predictdf.groupby(['CBSA_GEOID', 'ACtype', 'MetroName'])['predict_percentage'].mean().reset_index()
 predictdf['CBSA_GEOID'] = predictdf['CBSA_GEOID'].astype(str)
 
-merged_df = pd.merge(predictdf, mergeddf , on = ['CBSA_GEOID','MetroName']  , how='inner') #.drop(columns=['geometry'], inplace=True)
+merged_df = pd.merge(predictdf, mergeddf, on=['CBSA_GEOID', 'MetroName'], how='inner')
 
-# Assuming Filtered_data is already loaded
-filtered_data = merged_df.loc[merged_df.ACtype == "Central"]
-threshold = 33 # This is an arbitrary threshold for demonstration purposes.
-
-
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from adjustText import adjust_text
-
-# Create The scatter plot
-fig, ax = plt.subplots(figsize=(8, 6))
-texts = []  # List to hold the adjust_text objects
-
-for index, row in filtered_data.iterrows():
-    # Plot Each point
-    plt.scatter(row['Average AC prevalence'], row['predict_percentage'], color='#2b8cbe', alpha=0.6, s=130)
-
-    difference = abs(row['Average AC prevalence'] - row['predict_percentage'])
-    if difference > threshold:
-        # Create An annotation for points above the threshold
-        text = plt.text(row['Average AC prevalence'], row['predict_percentage'], row['MetroName'],
-                        ha='center', fontsize=10)
-        texts.append(text)
-
-# Use Adjust_text to dynamically adjust annotations, with arrow properties
-adjust_text(texts, arrowprops=dict(arrowstyle='-', color='gray', lw=0.5))
-
-# Hide Top and right spines
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-
-# Only Show bottom and left spines (x and y axes)
-ax.spines['bottom'].set_visible(True)
-ax.spines['left'].set_visible(True)
-
-plt.xlabel('Sara et al. (2020)', fontsize=20)
-plt.ylabel('Prediction', fontsize=20)
-plt.grid(False)
-plt.tick_params(axis='both', which='major', labelsize=18)
-
-fig.savefig("<your_path_here>", dpi=300, bbox_inches='tight')
-plt.show()
+plot_labeled_scatter(merged_df.loc[merged_df.ACtype == "Central"],
+                     x='Average AC prevalence', y='predict_percentage', threshold=33,
+                     xlabel='Sera et al. (2020)', outfile='Comparison_Sara.png')
 
 
-
-
-# Comparison With Romitti et al
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-predict = pd.read_csv("<your_path_here>")
-predict['GEOID'] = predict['GEOID'].astype(str).apply(lambda x: x.zfill(11))
+# =============================================================================
+# 5. Romitti et al. (2022), by metro area (any AC)
+# =============================================================================
+# Predicted share of homes with any AC (every type except NoAC) by tract, averaged by metro area
+predict = load_tract_predictions()
 predict['RE_ACtype'] = np.where(predict['ACtype'] == 'NoAC', 'NoAC', 'Yes')
 
 total_counts = predict.groupby(['GEOID'])['Count'].sum().reset_index(name='Total_Count')
-grouped_data = predict.groupby(['GEOID','RE_ACtype'])['Count'].sum().rename('Count').reset_index()
+grouped_data = predict.groupby(['GEOID', 'RE_ACtype'])['Count'].sum().rename('Count').reset_index()
 combined_data = pd.merge(grouped_data, total_counts, on=['GEOID'])
 combined_data['Percentage'] = (combined_data['Count'] / combined_data['Total_Count']) * 100
 
-
-
-predictdf= pd.merge(joined,combined_data, how='inner', on=['GEOID'])
-predictdf = predictdf.groupby(['CBSA_GEOID','RE_ACtype','MetroName'])['Percentage'].mean().reset_index(name='Predict')
+predictdf = pd.merge(joined_ids, combined_data, how='inner', on=['GEOID'])
+predictdf = predictdf.groupby(['CBSA_GEOID', 'RE_ACtype', 'MetroName'])['Percentage'].mean().reset_index(name='Predict')
 predictdf['CBSA_GEOID'] = predictdf['CBSA_GEOID'].astype(str)
 
-
-
-metroac = pd.read_csv("<your_path_here>")
-metroac['Romitti_Percentage'] = metroac['ac_prob']*100
-# Metroac.rename(columns={'CBSA_GEOID': 'OMB13CBSA'}, inplace=True)
+# Romitti et al. AC probability (0-1) -> percentage, averaged by metro area
+metroac = pd.read_csv(PATHS['romitti'])
+metroac['Romitti_Percentage'] = metroac['ac_prob'] * 100
 metroac['TRACT_GEOID'] = metroac['TRACT_GEOID'].astype(str).apply(lambda x: x.zfill(11))
-
 metroacdf = metroac.groupby('CBSA_GEOID')['Romitti_Percentage'].mean().reset_index(name='Romitti_Percentage')
 metroacdf['CBSA_GEOID'] = metroacdf['CBSA_GEOID'].astype(str)
 
 mergedf = pd.merge(predictdf, metroacdf, how='inner', on='CBSA_GEOID')
-# Mergedf = pd.merge(combined_data, metroac, how='inner', left_on='GEOID', right_on = 'TRACT_GEOID')
+
+plot_labeled_scatter(mergedf.loc[mergedf.RE_ACtype != "NoAC"],
+                     x='Romitti_Percentage', y='Predict', threshold=25,
+                     xlabel='Romitti et al. (2022)', outfile='Comparison_Romiiti.png',
+                     expand_points=(1.2, 1.5))
 
 
+# =============================================================================
+# 6. NYC Housing and Vacancy Survey 2023 (data preparation only)
+# =============================================================================
+# 6a. All units: central AC (CENTRALAIR) by borough
+nyc = pd.read_csv(PATHS['nyc_allunits'])[['CENTRALAIR', 'BORO']]
+nyc['BORO'] = nyc['BORO'].astype(str)
 
-# Set The style of seaborn and matplotlib parameters
-import matplotlib.pyplot as plt
-import seaborn as sns
-from adjustText import adjust_text
-import numpy as np
+# Borough code -> county FIPS
+nyc_fips_df = pd.DataFrame({
+    'BORO': ['1', '2', '3', '4', '5'],
+    'Borough': ['Bronx', 'Brooklyn', 'Manhattan', 'Queens', 'Staten Island'],
+    'County': ['Bronx County', 'Kings County', 'New York County', 'Queens County', 'Richmond County'],
+    'GEOIDCNT': ['36005', '36047', '36061', '36081', '36085']
+})
+nycdf = pd.merge(nyc, nyc_fips_df, on=['BORO'])
+nycdf['ACtype'] = nycdf['CENTRALAIR'].map({-1: 'NA', 1: 'Central', 2: 'NotCentral'})
 
-# Set The style of seaborn and matplotlib parameters
-sns.set_style("white")  # Changed from "whitegrid" to better see the annotations
-sns.despine()
-plt.rcParams.update({'font.size': 14})  # This sets the default font size for all text
+# Share of each AC type by county (borough)
+grouped_data = nycdf.groupby('GEOIDCNT')['ACtype'].value_counts().rename('Count').reset_index()
+grouped_percentage = (nycdf.groupby('GEOIDCNT')['ACtype'].value_counts(normalize=True).rename('Percentage') * 100).reset_index()
+NYC = pd.merge(grouped_data, grouped_percentage, on=['GEOIDCNT', 'ACtype'])
 
-# Assuming Filtered_data is already loaded
-filtered_data = mergedf.loc[mergedf.RE_ACtype != "NoAC"]
-threshold = 25  # This is an arbitrary threshold for demonstration purposes.
+# 6b. Occupied units: AC unit type (ACUNIT), citywide share
+nyc_occupied = pd.read_csv(PATHS['nyc_occupied'])[['ACUNIT']]
+nyc_occupied['ACtype'] = nyc_occupied['ACUNIT'].map({-3: 'NA', -1: "not reported", 1: 'Others', 2: 'Central'})
+nyc_occupied = nyc_occupied.groupby('ACtype').value_counts().rename('Count').reset_index()
+nyc_occupied['percentage'] = nyc_occupied.Count / nyc_occupied.Count.sum()
 
-# Create The scatter plot
-fig, ax = plt.subplots(figsize=(8, 6))
-texts = []
+# 6c. Predicted share of each AC type in the five NYC counties
+predict = load_tract_predictions()
+predict['GEOIDCNT'] = predict['GEOID'].str[0:5]
+total_counts = predict.groupby(['GEOIDCNT'])['Count'].sum().reset_index(name='Total_Count')
+grouped_data = predict.groupby(['GEOIDCNT', 'ACtype'])['Count'].sum().rename('predict_count').reset_index()
+combined_data = pd.merge(grouped_data, total_counts, on=['GEOIDCNT'])
+combined_data['predict_percentage'] = (combined_data['predict_count'] / combined_data['Total_Count']) * 100
 
-for index, row in filtered_data.iterrows():
-    # Plot Each point
-    plt.scatter(row['Romitti_Percentage'], row['Predict'], color='#2b8cbe', alpha=0.6, s=130)
-
-    difference = abs(row['Romitti_Percentage'] - row['Predict'])
-    if difference > threshold:
-        # Create An annotation for points above the threshold
-        text = plt.text(row['Romitti_Percentage'], row['Predict'], row['MetroName'],
-                        ha='center', fontsize=10)
-        texts.append(text)
-
-# Use Adjust_text to dynamically adjust annotations, with arrow properties
-adjust_text(texts, expand_points=(1.2, 1.5), arrowprops=dict(arrowstyle='-', color='gray', lw=0.5))
-
-# Hide Top and right spines
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-
-# Only Show bottom and left spines (x and y axes)
-ax.spines['bottom'].set_visible(True)
-ax.spines['left'].set_visible(True)
-
-plt.xlabel('Romitti et al. (2022)', fontsize=20)
-plt.ylabel('Prediction', fontsize=20)
-plt.grid(False)
-plt.tick_params(axis='both', which='major', labelsize=18)
-
-fig.savefig("<your_path_here>", dpi=300, bbox_inches='tight')
-plt.show()
-
-
-
-
-
+nyc_predicted = combined_data[combined_data['GEOIDCNT'].isin(nyc_fips_df.GEOIDCNT.unique())]
+print(nyc_predicted)

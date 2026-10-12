@@ -1,19 +1,50 @@
-# !/usr/bin/env Python3
-# -*- Coding: utf-8 -*-
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Created on Fri Apr  4 14:44:59 2025
 
 @author: y943a214
+
+Figures of the predicted AC prevalence:
+  1. Tract-level maps of AC type for ten large metro areas (with and without downtown markers)
+  2. County-level maps of each AC type for the continental U.S.
+  3. Urban vs rural box plot (urban = tract inside a metro area), and the
+     urban_rural_AC_tractlevel_2020.csv file used by sudo_rural_urban_ACmap.Rmd
+  4. State summary table of AC types
+
+Inputs (set DATA_DIR and FIG_DIR below)
+---------------------------------------
+results/summary_tract_2020.csv  tract-level AC counts by type, output of ACprob_to_county_zip.py
+2020 tract (NHGIS), 2020 CBSA (metro area) and 2020 county boundary shapefiles
 """
+
+import os
 
 import pandas as pd
 import geopandas as gpd
-df = pd.read_csv("<your_path_here>")
+
+DATA_DIR = '<your_path_here>'  # project "Data" folder
+FIG_DIR = '<your_path_here>'   # folder for the saved figures
+
+# Tract-level predicted AC counts and percentages (GEOID, ACtype, Percentage, Count)
+PREDICT_TRACT = os.path.join(DATA_DIR, 'results/summary_tract_2020.csv')
+# 2020 census tract boundaries (NHGIS; replace "nhgis0075" with your own extract number)
+TRACT_SHP = os.path.join(DATA_DIR, 'boundary/nhgis0075_shapefile_tl2020_us_tract_2020/US_tract_2020.shp')
+# 2020 metro/micro area (CBSA) boundaries
+CBSA_SHP = os.path.join(DATA_DIR, 'NHGIS/2020_us_cbsa/US_cbsa_2020.shp')
+# 2020 county boundaries (Census cartographic boundary file)
+COUNTY_SHP = os.path.join(DATA_DIR, 'boundary/cb_2020_us_county_500k/cb_2020_us_county_500k.shp')
+
+
+# =============================================================================
+# 1. Tract-level maps for large metro areas
+# =============================================================================
+df = pd.read_csv(PREDICT_TRACT)
 df['GEOID'] = df['GEOID'].apply(lambda x: f"{x:011d}")
 
-tracboundary = gpd.read_file("<your_path_here>")
+tracboundary = gpd.read_file(TRACT_SHP)
 
-ctboundary = gpd.read_file("<your_path_here>")
+ctboundary = gpd.read_file(CBSA_SHP)
 ctboundary.rename(columns={'GEOID': 'CBSA_GEOID', 'NAME':"MetroName"}, inplace=True)
 ctboundary=ctboundary[['CBSA_GEOID',"MetroName", 'geometry']]
 
@@ -49,7 +80,7 @@ import matplotlib.patches as mpatches
 
 
 
-# Define The cities and their corresponding subplots
+# Define the cities and their corresponding subplots
 cities = ['Dallas-Fort Worth-Arlington, TX', 'Houston-The Woodlands-Sugar Land, TX']
 
 cities = ['Dallas-Fort Worth-Arlington, TX', 'Houston-The Woodlands-Sugar Land, TX',
@@ -62,12 +93,12 @@ cities = ['Dallas-Fort Worth-Arlington, TX', 'Houston-The Woodlands-Sugar Land, 
 # AC Types
 ac_types = ['Central', 'NoAC', 'Others', 'Evaporative Cooler']
 
-# Prepare The figure layout
+# Prepare the figure layout
 fig, axs = plt.subplots(len(cities), len(ac_types), figsize=(20, 20), constrained_layout=True)
 
 for i, city in enumerate(cities):
     for j, ac_type in enumerate(ac_types):
-        # Filter The dataframe for each city and AC type
+        # Filter the dataframe for each city and AC type
         selectdf = DF.loc[(DF['MetroName'] == city) & (DF['ACtype'] == ac_type)]
         gdf = gpd.GeoDataFrame(selectdf, geometry='geometry')
         boundary_gdf = joined.loc[(joined['MetroName'] == city)]  # Ensure 'joined' is correctly defined above
@@ -75,10 +106,10 @@ for i, city in enumerate(cities):
         if gdf.empty:
             axs[i, j].set_visible(False)
         else:
-            # Plot Boundaries
+            # Plot boundaries
             boundary_gdf.plot(ax=axs[i, j], color='gray', linewidth=0.01, edgecolor='lightgray')
 
-            # Plot The main data with percentage color
+            # Plot the main data with percentage color
             gdf.plot(column='Percentage', cmap='coolwarm_r', legend=False,
                      vmin=0, vmax=100, linewidth=0.01, edgecolor='lightgray', ax=axs[i, j])
 
@@ -92,7 +123,7 @@ for i, city in enumerate(cities):
             if i == 0:
                 axs[0, j].set_title(ac_type,fontsize=20, pad=20)  # Adds a pad to elevate the AC type title above the plot
 
-            # Remove Axes borders
+            # Remove axes borders
             axs[i, j].spines['top'].set_visible(False)
             axs[i, j].spines['right'].set_visible(False)
             axs[i, j].spines['left'].set_visible(False)
@@ -103,7 +134,7 @@ for i, city in enumerate(cities):
             axs[i, j].yaxis.set_ticks([])
 
 
-# Add Custom colorbars in the last row of the grid
+# Add custom colorbars in the last row of the grid
 for j, ac_type in enumerate(ac_types):
     divider = make_axes_locatable(axs[-1, j])
     cax = divider.append_axes("bottom", size="5%", pad=0.05)
@@ -114,12 +145,12 @@ for j, ac_type in enumerate(ac_types):
     cb.outline.set_edgecolor('none')  # Remove the colorbar outline
 
 
-# Create A custom legend for NA
+# Create a custom legend for NA
 na_patch = mpatches.Patch(color='gray', label='NA')
 fig.legend(handles=[na_patch], loc='lower left',  bbox_to_anchor=(0.2, -0.01), fontsize=20)
 
 
-fig.savefig("<your_path_here>", dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(FIG_DIR, "AC_metro_maps.png"), dpi=300, bbox_inches='tight')
 
 plt.show()
 
@@ -128,7 +159,7 @@ plt.show()
 
 from shapely.geometry import Point
 
-# Define Downtown coordinates for each city (example coordinates — update with actual downtowns)
+# Define downtown coordinates for each city (example coordinates — update with actual downtowns)
 downtown_coords = {
     'Dallas-Fort Worth-Arlington, TX': Point(-96.7970, 32.7767),
     'Houston-The Woodlands-Sugar Land, TX': Point(-95.3698, 29.7604),
@@ -143,14 +174,14 @@ downtown_coords = {
 }
 
 
-# Create Downtown GeoDataFrame and convert CRS later
+# Create downtown GeoDataFrame and convert CRS later
 downtown_gdf = gpd.GeoDataFrame({'MetroName': list(downtown_coords.keys())},
                                 geometry=list(downtown_coords.values()), crs="EPSG:4326")
 
-# Prepare The figure
+# Prepare the figure
 fig, axs = plt.subplots(len(cities), len(ac_types), figsize=(20, 20), constrained_layout=True)
 
-# Loop Through each city and AC type
+# Loop through each city and AC type
 for i, city in enumerate(cities):
     for j, ac_type in enumerate(ac_types):
         selectdf = DF.loc[(DF['MetroName'] == city) & (DF['ACtype'] == ac_type)]
@@ -160,18 +191,18 @@ for i, city in enumerate(cities):
         if gdf.empty:
             axs[i, j].set_visible(False)
         else:
-            # Convert Downtown point to match CRS
+            # Convert downtown point to match CRS
             city_point = downtown_gdf[downtown_gdf['MetroName'] == city]
             city_point = city_point.to_crs(gdf.crs)
 
-            # Plot Boundaries
+            # Plot boundaries
             boundary_gdf.plot(ax=axs[i, j], color='gray', linewidth=0.01, edgecolor='lightgray')
 
             # Plot Data by percentage
             gdf.plot(column='Percentage', cmap='coolwarm_r', legend=False,
                      vmin=0, vmax=100, linewidth=0.01, edgecolor='lightgray', ax=axs[i, j])
 
-            # Plot Downtown red dot
+            # Plot downtown red dot
             city_point.plot(ax=axs[i, j], color='black', markersize=20, zorder=10)
 
             # Y-axis City labels
@@ -182,7 +213,7 @@ for i, city in enumerate(cities):
             if i == 0:
                 axs[0, j].set_title(ac_type, fontsize=20, pad=20)
 
-            # Hide Axes ticks and borders
+            # Hide axes ticks and borders
             axs[i, j].spines['top'].set_visible(False)
             axs[i, j].spines['right'].set_visible(False)
             axs[i, j].spines['left'].set_visible(False)
@@ -190,7 +221,7 @@ for i, city in enumerate(cities):
             axs[i, j].xaxis.set_ticks([])
             axs[i, j].yaxis.set_ticks([])
 
-# Add Colorbars
+# Add colorbars
 for j, ac_type in enumerate(ac_types):
     divider = make_axes_locatable(axs[-1, j])
     cax = divider.append_axes("bottom", size="5%", pad=0.05)
@@ -200,40 +231,42 @@ for j, ac_type in enumerate(ac_types):
     cax.set_xlabel('Percentage')
     cb.outline.set_edgecolor('none')
 
-# Add Custom legend for NA
+# Add custom legend for NA
 na_patch = mpatches.Patch(color='gray', label='NA')
 fig.legend(handles=[na_patch], loc='lower left', bbox_to_anchor=(0.2, -0.01), fontsize=20)
 
-fig.savefig("<your_path_here>", dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(FIG_DIR, "AC_metro_maps_downtown.png"), dpi=300, bbox_inches='tight')
 
 plt.show()
 
 
 
 
-# United States map (county level)
-df = pd.read_csv("<your_path_here>")
+# =============================================================================
+# 2. United States map (county level)
+# =============================================================================
+df = pd.read_csv(PREDICT_TRACT)
 df['GEOID'] = df['GEOID'].apply(lambda x: f"{x:011d}")
 df['GEOIDCN'] = df['GEOID'].str[0:5]
 
-# Group By 'GEOIDCN' and 'ACtype', and sum 'Count'
+# Group by 'GEOIDCN' and 'ACtype', and sum 'Count'
 grouped = df.groupby(['GEOIDCN', 'ACtype'])['Count'].sum().reset_index()
 
-# Calculate The total counts for each 'GEOIDCN'
+# Calculate the total counts for each 'GEOIDCN'
 total_counts = grouped.groupby('GEOIDCN')['Count'].sum().reset_index()
 total_counts.rename(columns={'Count': 'TotalCount'}, inplace=True)
 
-# Merge The total counts back to the grouped data
+# Merge the total counts back to the grouped data
 merged = pd.merge(grouped, total_counts, on='GEOIDCN')
 
-# Calculate The percentage
+# Calculate the percentage
 merged['Percentage'] = (merged['Count'] / merged['TotalCount']) * 100
 
 print(merged)
 
 
 # County boundary
-ctboundary = gpd.read_file("<your_path_here>")
+ctboundary = gpd.read_file(COUNTY_SHP)
 non_conus_codes = ['02', '15', '60', '66', '69', '72', '78']
 ctboundary = ctboundary[~ctboundary['STATEFP'].isin(non_conus_codes)]
 
@@ -260,31 +293,31 @@ norm = Normalize(vmin=joined['Percentage'].min(), vmax=joined['Percentage'].max(
 
 for ax, ac_type in zip(axs, ac_types):
     gdf = joined.loc[joined['ACtype'] == ac_type]
-    # Plot Each GeoDataFrame subset
+    # Plot each GeoDataFrame subset
     ctboundary.plot(ax=ax, color='gray', linewidth=0.01, edgecolor='lightgray')
     gdf.plot(column='Percentage', cmap=cmap, norm=norm, legend=False, ax=ax, linewidth=0.01, edgecolor='gray')
     ax.set_title(f'{ac_type}',fontsize=20)
     ax.set_axis_off()
 
-# Define The position for the colorbar
-# Parameters Are [left, bottom, width, height] in the figure coordinate system
+# Define the position for the colorbar
+# Parameters are [left, bottom, width, height] in the figure coordinate system
 cbar_ax = fig.add_axes([0.15, 0.3, 0.7, 0.03]) # Adjust these values as needed for your layout
 
-# Create A colorbar with the same colormap and normalization
+# Create a colorbar with the same colormap and normalization
 scalar_mappable = ScalarMappable(norm=norm, cmap=cmap)
 scalar_mappable.set_array([])
 cbar = fig.colorbar(scalar_mappable, cax=cbar_ax, orientation='horizontal')
 cbar.set_label('Percentage', fontsize=18)  # Set legend label font size
 
-# Adjust The tick label font size
+# Adjust the tick label font size
 cbar.ax.tick_params(labelsize=15)
 
-# Remove The colorbar border
+# Remove the colorbar border
 cbar.outline.set_visible(False)
 
 plt.tight_layout()
 
-fig.savefig("<your_path_here>", dpi=300, bbox_inches='tight')
+fig.savefig(os.path.join(FIG_DIR, "AC_county_map.png"), dpi=300, bbox_inches='tight')
 
 plt.show()
 
@@ -292,10 +325,12 @@ plt.show()
 
 
 
-# Urban and rural plot
-tracboundary = gpd.read_file("<your_path_here>")
+# =============================================================================
+# 3. Urban and rural comparison (urban = tract that intersects a metro area)
+# =============================================================================
+tracboundary = gpd.read_file(TRACT_SHP)
 
-ctboundary = gpd.read_file("<your_path_here>")
+ctboundary = gpd.read_file(CBSA_SHP)
 ctboundary.rename(columns={'GEOID': 'CBSA_GEOID', 'NAME':"MetroName"}, inplace=True)
 ctboundary=ctboundary[['CBSA_GEOID',"MetroName", 'geometry']]
 
@@ -303,23 +338,23 @@ joined = gpd.sjoin( tracboundary,ctboundary) #,  how='inner', predicate='within'
 joined.GEOID.unique()
 
 
-df = pd.read_csv("<your_path_here>")
+df = pd.read_csv(PREDICT_TRACT)
 df['GEOID'] = df['GEOID'].apply(lambda x: f"{x:011d}")
 
 
-# Create A set of unique GEOIDs that are considered urban
+# Create a set of unique GEOIDs that are considered urban
 urban_geoids = set(joined['GEOID'].unique())
 
-# Define A function to apply to the GEOID column in tracboundary
+# Define a function to apply to the GEOID column in tracboundary
 def classify_geoid(geoid):
     return 'Urban' if geoid in urban_geoids else 'Rural'
 
-# Apply The function to the GEOID column to create a new 'Area Type' column
+# Apply the function to the GEOID column to create a new 'Area Type' column
 tracboundary['urbanicity'] = tracboundary['GEOID'].apply(classify_geoid)
 
-# Tracboundary = pd.DataFrame(tracboundary).drop('geometry', axis = 1)
-# DF = Pd.merge(tracboundary, df, on = 'GEOID')
-# DF.to_csv("<your_path_here>", Index=False)
+# Tract-level AC counts with urban/rural label: input of sudo_rural_urban_ACmap.Rmd
+urban_rural_df = pd.merge(pd.DataFrame(tracboundary).drop('geometry', axis=1), df, on='GEOID')
+urban_rural_df.to_csv(os.path.join(DATA_DIR, 'results/urban_rural_AC_tractlevel_2020.csv'), index=False)
 
 # Creating tract level urban
 urbandf = tracboundary[['GEOID','urbanicity']]
@@ -334,16 +369,16 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-# Make Sure ACtype is a category for ordered plotting
+# Make sure ACtype is a category for ordered plotting
 DF['ACtype'] = DF['ACtype'].astype('category')
 
 
 sns.set_theme(style="ticks", palette="muted")
-# Sns.reset_defaults()
+# sns.reset_defaults()
 
 plt.figure(figsize=(10, 6))
 
-# Create The box plot
+# Create the box plot
 sns.boxplot(
     data=DF,
     x='ACtype',
@@ -351,10 +386,10 @@ sns.boxplot(
     hue='urbanicity'
 )
 
-# Customizing Axes and legend to match the example
-# Add Horizontal legend at the bottom
+# Customizing axes and legend to match the example
+# Add horizontal legend at the bottom
 
-# Add Horizontal legend at the bottom
+# Add horizontal legend at the bottom
 plt.legend(
     # Title='Urbanicity',
     loc='lower center',
@@ -373,7 +408,7 @@ plt.yticks(fontsize=15)
 sns.despine(offset=10, trim=True)
 plt.tight_layout()
 
-plt.savefig("<your_path_here>", dpi=300, bbox_inches='tight')
+plt.savefig(os.path.join(FIG_DIR, "AC_urban_rural_boxplot.png"), dpi=300, bbox_inches='tight')
 
 plt.show()
 
@@ -381,7 +416,9 @@ plt.show()
 
 
 
-# Making summary table
+# =============================================================================
+# 4. State summary table (uses the county-level data `joined` from section 2)
+# =============================================================================
 import pandas as pd
 
 # Step 1: Extract State FIPS from GEOIDCN (first 2 digits)
@@ -405,7 +442,7 @@ state_ac_summary = state_ac_summary.sort_values(['STATEFP', 'ACtype'])
 
 # View Result
 print(state_ac_summary.head())
-state_ac_summary.to_csv("<your_path_here>")
+state_ac_summary.to_csv(os.path.join(DATA_DIR, "results/state_ac_summary.csv"))
 
 
 

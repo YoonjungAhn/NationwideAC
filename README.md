@@ -24,7 +24,8 @@ New to XGBoost? The XGBoost documentation has a good [introduction to boosted tr
 | 4 | `Alltype_ACesimtation_HPC_predict.py` | `allcombined_for_contemporal_prediction.csv`, `yes_ac_predict_result.csv`, `cityruralindex_2020.csv` | `alltype_ac_predict_result.csv`, `prediction_probabilities.csv` |
 | 5 | `ACprob_to_county_zip.py` | `alltype_ac_predict_result.csv`, NHGIS and Census boundary shapefiles | Tract, ZCTA, block group, county and metro summaries |
 | 6 | `UShouse.Rmd` | Summaries from step 5, Census housing-unit totals | Summaries adjusted to housing-unit totals (see `Data/`) |
-| 7 | `Comparison_analysis.py`, `ResultACmapping.py` | Outputs of step 5, validation data | Validation figures and maps |
+| 7 | `Comparison_analysis.py` | Tract summaries from step 5, validation data | Validation figures and correlations |
+| 8 | `ResultACmapping.py`, then `sudo_rural_urban_ACmap.Rmd` | Tract summaries from step 5, boundary shapefiles | Maps, urban/rural figures and state summary |
 
 
 ## Data Sources
@@ -153,36 +154,43 @@ Same as `Yes_ACesimtation_HPC.py`
 
 ## II. Validation 
 ### 1. `Comparison_analysis.py`
-A Python script for comparing AC estimation outputs with other data sources (e.g., the American Housing Survey). It:
-- Loads prediction results
-- Calculates difference metrics (e.g., RMSE, MAE)
-- Visualizes model comparison with summary statistics or graphs
-- Designed for reproducible model evaluation
+Compares the predicted AC prevalence with other data sources. For each comparison it draws a scatter plot (other source vs. prediction) and prints the Pearson correlation by AC type:
+1. American Housing Survey (AHS), by metro area
+2. AHS, national, by census division (all tracts, and non-metro tracts only)
+3. Sera et al. (2020), central AC by metro area
+4. Romitti et al. (2022), any AC by metro area
+5. NYC Housing and Vacancy Survey 2023 (data preparation only)
+
+Set `DATA_DIR` and `FIG_DIR` at the top of the file; every input file is listed in `PATHS`.
 
 ## III. Figures
 ### 1. `sudo_rural_urban_ACmap.Rmd`
-An R Markdown document for visualizing rural and urban disparities in AC availability using statistical maps. *(To be added to this repository.)* It:
-- Loads spatial and model output data
-- Categorizes counties by urban/rural typologies
-- Generates comparative maps for interpretation
-- Requires R packages such as `tidyverse`, `sf`, `tmap`, and `ggplot2`
+An R Markdown document that shows the share of each AC type in urban and rural tracts for every state, with the state panels arranged like a map of the U.S. (`geofacet`). It:
+- Reads `results/urban_rural_AC_tractlevel_2020.csv`, written by `ResultACmapping.py` (section 3)
+- Sums the tract counts by state, AC type and urbanicity, and converts them to percentages
+- Saves `figures/UrbanRuralSudoMap.png`
+- Requires `dplyr`, `tidyr`, `ggplot2` and `geofacet`
 
 ### 2. `ResultACmapping.py`
-Script for generating final AC mapping visualizations. It:
-- Integrates model predictions with geographic boundaries
-- Produces choropleth maps by county or ZIP code
-- Utilizes libraries like `geopandas`, `matplotlib`, and `contextily`
+Script for the AC maps and summary figures. It:
+- Maps the tract-level AC types for ten large metro areas (with and without downtown markers)
+- Maps the county-level share of each AC type for the continental U.S.
+- Compares urban and rural tracts (urban = tract that intersects a metro area) with a box plot, and writes `urban_rural_AC_tractlevel_2020.csv` for `sudo_rural_urban_ACmap.Rmd`
+- Writes a state summary table of AC types
+- Uses `geopandas`, `matplotlib` and `seaborn`
 
 ## IV. Data creation
 ### 1. `ACprob_to_county_zip.py`
-A data processing utility that:
-- Maps estimated AC prevalence from properties to census tracts, ZIP Code Tabulation Areas (ZCTAs), block groups, counties and metro areas
-- Performs spatial joins and weighted aggregation
-- Includes support for custom shapefiles and weighting schemes
-- Uses NHGIS tract, ZCTA and block group boundary shapefiles (see [Data Sources](#data-sources))
+Aggregates the property-level predictions to census geographies. Each step can be turned on or off at the top of the file:
+1. Counts properties by AC type in each census tract, ZIP Code Tabulation Area (ZCTA), metro area (CBSA) and block group, for the 2000, 2010, 2015 and 2020 boundaries (spatial join of property points to boundary shapefiles)
+2. Builds a ZCTA-to-county key and adds the county to the ZCTA summaries
+3. Formats the tract summaries (county FIPS, tract GEOID, AC type, percentage, count)
+4. Builds a tract-to-metro-area key, and (after `UShouse.Rmd`) adds the metro area to the adjusted tract data
+
+Uses NHGIS tract, ZCTA and block group shapefiles and Census CBSA, county and state boundaries (see [Data Sources](#data-sources)).
 
 ### 2. `UShouse.Rmd`
-An R Markdown document that adjusts the predicted AC counts to match Census housing-unit totals. It:
+An R Markdown document that adjusts the predicted AC counts to match Census housing-unit totals. Run it after `ACprob_to_county_zip.py`. It:
 - Downloads total housing units by tract, county and block group with `tidycensus` (requires a [Census API key](https://api.census.gov/data/key_signup.html))
 - Uses the NHGIS 2020→2010 tract crosswalk to align housing units with 2010 tract boundaries
 - Proportionally scales the predicted counts so they do not exceed the number of housing units in each tract, county, block group and ZCTA
