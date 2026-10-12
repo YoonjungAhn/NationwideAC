@@ -5,6 +5,8 @@ Created on Tue Jul 16 15:20:32 2024
 
 @author: y943a214
 """
+#https://www.kaggle.com/code/bennyfung/model-interpretability-xgboost-shap
+#https://shap.readthedocs.io/en/latest/example_notebooks/tabular_examples/tree_based_models/Census%20income%20classification%20with%20XGBoost.html
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn import model_selection, metrics
@@ -25,12 +27,16 @@ import pickle
 import multiprocessing
 
 # Set the working directory to the folder that holds the input CSV below
-os.chdir("<your_path_here>")
+# (outputs are also written here)
+os.chdir('<your_path_here>')
 
 
+#i need to round up the room numbers
+# i need to round up built year
+# i need to save shape value as a dataframe
 
 # Property-level modeling table: output of Dataintegration_ACestimation.Rmd
-# (written at the end of that file).
+# (written at the end of that file)
 df = pd.read_csv('./allcombined_for_contemporal_prediction.csv',  na_values=[''])
 df = df.loc[~df['STATE'].isin(['AK', 'HI', 'PR'])]
 df['YEARBUILT'] = round(df['YEARBUILT'])
@@ -39,19 +45,21 @@ df['TOTROOMS'] = round(df['TOTROOMS'])
 #correlation plot
 corr_matrix = df[['YEARBUILT', 'RENOYEAR', 'TOTROOMS', 'BUPR','median_income','prop_Black','prop_All_Spanish','prop_HigherEdu','CDDs','HRI2020']].corr()
 
-fig, ax = plt.subplots(figsize=(10,10))
+fig, ax = plt.subplots(figsize=(10,10)) 
 sns.heatmap(corr_matrix, annot=True, cmap='coolwarm')
 plt.title('Correlation Matrix')
 plt.show()
 
 
 #predicting YES AC
-# Reload the same modeling table (allcombined_for_contemporal_prediction.csv
-# from Dataintegration_ACestimation.Rmd) to start from unmodified data
-df = pd.read_csv("./allcombined_for_contemporal_prediction.csv",  na_values=[''])
 df['AIRCONDITIONINGrecode'].unique()
 df['REHEATTYPE'].unique()
 #DF = df.copy()
+
+df = df.dropna(subset=['REHEATTYPE'])
+df = pd.get_dummies(df, columns=['REHEATTYPE'], prefix='REHEAT', drop_first=False)
+
+
 
 # Assuming your dataframe is loaded as df
 #replacing Yes to NAs
@@ -59,6 +67,9 @@ df['AIRCONDITIONINGrecode'] = df['AIRCONDITIONINGrecode'].replace("Yes",np.nan)
 
 # Remove rows where AIRCONDITIONINGrecode is NA
 df = df[(df['AIRCONDITIONINGrecode'] != 'NoAC') & (df['AIRCONDITIONINGrecode'].notna())]
+
+
+#df= df.sample(n=200000, replace=False, random_state=42)
 
 #encoding the data
 label_encoder_air = LabelEncoder()
@@ -72,7 +83,7 @@ df['CONDITION'].astype(str)
 df['HEAT_encoded'].astype(str)
 
 # Define the feature columns and target column
-features = df[['RENOYEAR', 'TOTROOMS','CONDITION','HEAT_encoded', 'BUPR','median_income','prop_Black','prop_All_Spanish','prop_HigherEdu','CDDs','HRI2020']].columns# CDDs Adjust indexing if necessary
+features = df[['RENOYEAR', 'TOTROOMS','CONDITION','REHEAT_Central', 'REHEAT_HeatPump', 'REHEAT_Other', 'BUPR','median_income','prop_Black','prop_All_Spanish','prop_HigherEdu','CDDs','HRI2020']].columns# CDDs Adjust indexing if necessary
 target = 'AIRCONDITIONINGrecode_encoded'
 
 
@@ -95,7 +106,13 @@ X_test = test_df[features]
 y_test = test_df[target]
 
 
-#Tuneing the model
+# Define the model
+#xgb_model =xgb.XGBClassifier(objective='multi:softprob', random_state=42, enable_categorical=True)
+
+
+'''
+#find the best parmaters : https://www.kaggle.com/code/prashant111/a-guide-on-xgboost-hyperparameters-tuning
+#Tuneing the model 
 space = {
     'n_estimators': hp.choice('n_estimators', range(100, 1000)),
     'max_depth': hp.choice('max_depth', range(3, 15)),
@@ -110,13 +127,13 @@ def objective(space):
                     n_estimators =space['n_estimators'], max_depth = int(space['max_depth']), gamma = space['gamma'],
                     reg_alpha = int(space['reg_alpha']),min_child_weight=int(space['min_child_weight']),
                     colsample_bytree=int(space['colsample_bytree']),enable_categorical=True, n_jobs=multiprocessing.cpu_count()-3)
-
+    
     evaluation = [( X_train, y_train), ( X_test, y_test)]
-
+    
     clf.fit(X_train, y_train,
                 eval_set=evaluation,
                 verbose=False)
-
+    
     pred = clf.predict(X_test)
     accuracy = accuracy_score(y_test, pred)
     print("SCORE:", accuracy)
@@ -152,6 +169,25 @@ best_model = xgb.XGBClassifier(
     random_state=42, n_jobs = multiprocessing.cpu_count()
 )
 
+'''
+
+# this is what i got from the model 
+
+# Hyperparameter value ranges
+colsample_bytree_values = np.arange(0.6, 1.05, 0.05).tolist()
+max_depth_range = list(range(5, 15))
+n_estimators_range = list(range(200, 1001, 100))
+min_child_weight_range = list(range(1, 10))
+
+
+best_hyperparams = {
+    'colsample_bytree': 8,
+    'gamma': 0.7482189838249866,
+    'max_depth': 0,
+    'min_child_weight': 6,
+    'n_estimators': 3,
+    'reg_alpha': 0.7600200477918414
+}
 
 # Translate indices to actual values
 best_hyperparams['colsample_bytree'] = colsample_bytree_values[best_hyperparams['colsample_bytree']]
@@ -198,8 +234,13 @@ report_df = pd.DataFrame(report).transpose().reset_index()
 report_df.to_csv('./YesAC_predict_accuracy_matrix.csv', index=False)
 
 
+#df_pred = pd.DataFrame(y_pred, columns=['pred'])
+#see if this works
+#df['yes_pred'] = y_pred
 
-#visualization for model accuracy
+
+'''
+#visualization for model accuracy 
 import pandas as pd
 
 # Create a DataFrame from the trials object
@@ -244,6 +285,9 @@ plt.show()
 plt.savefig('./YesAC_predict_parameter_tuning.png', bbox_inches='tight')
 
 
+'''
+
+
 #origial data prediction
 
 # Extract the features from your original data
@@ -274,10 +318,10 @@ accuracy_df = pd.DataFrame({'Original_Accuracy': [original_accuracy]})
 accuracy_df.to_csv('./original_accuracy_results.csv', index=False)
 
 # Property-level results with the predicted YES AC type (column "Yespredicted").
-# This file is the first input of Alltype_ACesimtation_HPC_predict.py.
-df.to_csv("./YesAC_predict_result.csv", index= False)
+# This file is an input of Alltype_ACesimtation_HPC_predict.py.
+df.to_csv('./yes_ac_predict_result.csv', index= False)
 
-# Here i am trying by state level
+# Here i am trying by state level 
 
 # Assuming best_model is already defined and fitted
 explainer = shap.Explainer(best_model)
@@ -287,21 +331,23 @@ explainer = shap.Explainer(best_model)
 # Make sure 'features' is defined as your list of model features
 for fips_code, group in df.groupby('GEOIDCN'):
     X_county = group[features]
-
+    
     # Calculate SHAP values for the county
     shap_values_county = explainer(X_county)
-
+    
     # Use FIPS code as the file identifier, ensuring it's a string to handle any file naming issues
     file_identifier = str(fips_code)
-
+    
     # Save SHAP values for the county
     with open(f'./YesAC_predict_shap_values_{file_identifier}.pkl', 'wb') as f:
         pickle.dump(shap_values_county, f)
-
+    
     print(f'SHAP values calculated and saved for FIPS code {fips_code}')
-
-
-
+    
+    
+    
+    
+    
 # making the data for each county that i can use for making maps
 
 import shap
@@ -316,7 +362,7 @@ result_dfs = []  # List to hold each group's result DataFrame
 
 for fips_code, group in df.groupby('GEOIDCN'):
     X_county = group[features]
-
+    
     # Calculate SHAP values for the county
     shap_values_county = explainer(X_county)
     print("Shape of SHAP values:", shap_values_county.shape)  # Debugging line to understand the shape
@@ -328,7 +374,7 @@ for fips_code, group in df.groupby('GEOIDCN'):
 
     # Convert SHAP values to a DataFrame for easier manipulation and concatenation
     shap_values_df = pd.DataFrame(shap_values_county.values, columns=features, index=X_county.index) # i need to check if this column is correct
-
+    
     # Make sure 'PROPID' is included in the shap_values_df to align with 'group'
     shap_values_df['PROPID'] = group['PROPID'].values  # Use .values to ensure correct alignment
 
@@ -342,7 +388,7 @@ for fips_code, group in df.groupby('GEOIDCN'):
 
     # Save each county's DataFrame as a CSV file, named by its GEOIDCN code
     #filename = f"shap_values_county_{fips_code}.csv"
-    filename = f"<your_path_here>"
+    filename = f"./results/yes_AC_county_summary/shap_values_county_{fips_code}.csv"
 
     result_df.to_csv(filename, index=False)
     print(f"Saved {filename}")
@@ -353,9 +399,65 @@ final_result_df = pd.concat(result_dfs)
 # Check the final DataFrame
 print(final_result_df)
 
-filename = "<your_path_here>"
+filename = "./results/yes_AC_county_summary/shap_values_county_level_all.csv"
 #filename = "shap_values_county_level_all.csv"
 final_result_df.to_csv(filename, index=False)
+
+
+
+    
+
+#test here if i can compile them
+import pickle
+import numpy as np
+import matplotlib.pyplot as plt
+import shap
+import glob
+import os
+
+# Use glob to find all pickle files in the results directory and subdirectories
+file_paths = glob.glob('./results/**/*.pkl', recursive=True)
+file_paths =file_paths[1:10]
+
+# Function to load a pickle file
+def load_pickle_file(file_path):
+    with open(file_path, 'rb') as file:
+        return pickle.load(file)
+
+
+# Load SHAP Explanation objects
+explanations = [pickle.load(open(file, 'rb')) for file in file_paths]
+
+# Combine the SHAP values and base values
+# Combine the SHAP values and data
+combined_shap_values = np.vstack([e.values for e in explanations])
+combined_data = np.vstack([e.data for e in explanations])
+combined_data = np.vstack([e.data for e in explanations])
+feature_names = [explanation.feature_names for explanation in explanations if hasattr(explanation, 'feature_names')][1]
+
+
+# Update X_original with the correct data (make sure it matches combined_data)
+X_original = pd.DataFrame(combined_data, columns=feature_names )
+
+# Assuming X_original is loaded
+# Rename columns as specified
+# Rename columns as needed
+feature_name_mapping = {
+    'TOTROOMS': 'Total rooms',
+    'CONDITION': 'Condition',
+    'RENOYEAR': 'Renovated year',
+    'HEAT': "Heater",
+    'median_income': 'Median income',
+    'prop_Black': '%Black/African Americans',
+    'prop_All_Spanish': '%Hispanics',
+    'prop_HigherEdu': "Post Secondary Education Rate",
+    'CDDs': 'Cooling Degree Days',
+    'HRI2020': 'Historical Housing Policy Score'
+}
+X_original_renamed = X_original.rename(columns=feature_name_mapping)
+
+
+#shap.summary_plot(combined_shap_values, X_original_renamed, feature_names=X_original_renamed.columns, plot_type='dot', show=False)
 
 
 # Generate SHAP summary plot
@@ -396,6 +498,11 @@ plt.savefig('./Local_Importance_summary_plot_with_colorbar.png', format='png', d
 plt.close()
 
 
+
+
+
+
+'''
 # Calculate SHAP values
 # Create SHAP Explainer
 
@@ -426,7 +533,7 @@ with open('./YesAC_predict_shap_values.pkl', 'wb') as f:
 # Load the SHAP values
 #with open('./shap_values.pkl', 'rb') as f:
 #    shap_values = pickle.load(f)
-
+    
 
 #Global Importance
 shap_values = explainer(X_original)
@@ -445,8 +552,8 @@ feature_name_mapping = {
     'prop_All_Spanish': '%Hispanics',
     'prop_HigherEdu':"Post Secondary Education Rate",
     'CDDs':'Cooling Degree Days',
-    'HRI2020':'Historical Housing Policy Score'
-
+    'HRI2020':'Historical Housing Policy Score'  
+    
 }
 
 X_original_renamed = X_original.rename(columns=feature_name_mapping)
@@ -468,7 +575,7 @@ plt.subplots_adjust(left=0.1, right=20, top=0.9, bottom=0.1, wspace=1, hspace=0.
 plt.tight_layout()
 
 
-plt.savefig('./Global_Importance_summary_plot_with_colorbar.png', dpi=300, bbox_inches='tight') #
+plt.savefig('./Global_Importance_summary_plot_with_colorbar.png', dpi=300, bbox_inches='tight') # 
 
 plt.show()
 
@@ -486,12 +593,15 @@ explainer = shap.Explainer(best_model, X_original)
 shap_values = explainer(X_original)
 
 
+
+    
+
 feature_names = X_train.columns.tolist()  # Make sure this is defined before it's used
 X_original_renamed = X_original.rename(columns=feature_name_mapping)
 
 
 # Visualize the global feature importance using summary plot
-plt.figure(figsize=(10, 10))
+plt.figure(figsize=(10, 10)) 
 plt.tight_layout()
 shap_values_single_output = shap_values.values[:, :, 0]  # Adjust the index 0 if you want another class/output
 cb.set_label("Feature value (red high, blue low)", rotation=270, labelpad=20)
@@ -499,6 +609,8 @@ plt.figure()
 shap.summary_plot(shap_values_single_output, X_original_renamed , feature_names=X_original_renamed.columns.tolist(), show=False)
 plt.savefig( './Local_Importance_summary_plot_with_colorbar.png',  format='png', dpi=300, bbox_inches='tight')  # Save as SVG for higher quality
 plt.close()
+
+
 
 
 plt.close()  # Close the plot to free up memory
@@ -510,3 +622,9 @@ plt.savefig('./dependece_var1.png', dpi=300)  # Save as SVG for higher quality
 shap.force_plot(explainer.expected_value,  shap_values[0, :])
 
 
+# Geographical SHAP Visualization
+# Assuming you have a GeoDataFrame with 'latitude' and 'longitude'
+#geo_df = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.longitude, df.latitude))
+#geo_df['shap_value'] = shap_values.values[:, shap_values.feature_names.index('feature_name')]
+
+'''

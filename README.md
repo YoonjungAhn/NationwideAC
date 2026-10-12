@@ -20,10 +20,11 @@ New to XGBoost? The XGBoost documentation has a good [introduction to boosted tr
 |---|---|---|---|
 | 1 | `Dewey_imputation.Rmd` | `Dewey_selected_data.csv` (Dewey property records) | `Dewey_categoryvalues_imputed_v2.csv`, `Dewey_numervalues_imputed.csv` (join by `PROPID` → `Dewey_imputed.csv`) |
 | 2 | `Dataintegration_ACestimation.Rmd` | Dewey data + external data sources below | `allcombined_for_contemporal_prediction.csv` |
-| 3 | `Yes_ACesimtation.py` | `allcombined_for_contemporal_prediction.csv` | `YesAC_predict_result.csv` |
-| 4 | `Alltype_ACesimtation_HPC_predict.py` | `allcombined_for_contemporal_prediction.csv`, `YesAC_predict_result.csv` | `alltype_ac_predict_result.csv` |
-| 5 | `AC_to_county_zip.py` | `alltype_ac_predict_result.csv`, NHGIS boundary shapefiles | Tract, ZCTA, county and metro summaries (see `Data/`) |
-| 6 | `Comparison_analysis.py`, `ResultACmapping.py` | Outputs of step 5, validation data | Validation figures and maps |
+| 3 | `Yes_ACesimtation_HPC.py` | `allcombined_for_contemporal_prediction.csv` | `yes_ac_predict_result.csv` |
+| 4 | `Alltype_ACesimtation_HPC_predict.py` | `allcombined_for_contemporal_prediction.csv`, `yes_ac_predict_result.csv`, `cityruralindex_2020.csv` | `alltype_ac_predict_result.csv`, `prediction_probabilities.csv` |
+| 5 | `ACprob_to_county_zip.py` | `alltype_ac_predict_result.csv`, NHGIS and Census boundary shapefiles | Tract, ZCTA, block group, county and metro summaries |
+| 6 | `UShouse.Rmd` | Summaries from step 5, Census housing-unit totals | Summaries adjusted to housing-unit totals (see `Data/`) |
+| 7 | `Comparison_analysis.py`, `ResultACmapping.py` | Outputs of step 5, validation data | Validation figures and maps |
 
 
 ## Data Sources
@@ -37,12 +38,13 @@ See Table 2 of the [paper](https://www.nature.com/articles/s41597-025-06104-3) f
 | American Community Survey 5-year estimates | Median income, % Black, % Hispanic, % higher education | Census tract | [U.S. Census Bureau](https://www.census.gov/programs-surveys/acs) (via [`tidycensus`](https://walker-data.com/tidycensus/)) | `Dataintegration_ACestimation.Rmd` |
 | Built-up property records (BUPR) | BUPR | Census tract | [HISDAC-US](https://dataverse.harvard.edu/dataverse/hisdacus) | `Dataintegration_ACestimation.Rmd` |
 | Historic Redlining Score | HRI2020 | Census tract (2020) | [openICPSR](https://www.openicpsr.org/openicpsr/project/141121) | `Dataintegration_ACestimation.Rmd` |
-| Core Based Statistical Areas | Metro / micro / not metro | CBSA | [Census TIGER/Line](https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html) | `Dataintegration_ACestimation.Rmd`, `AC_to_county_zip.py` |
-| Tract and ZCTA boundaries (2000, 2010, 2015, 2020) | Boundaries | Tract, ZCTA | [NHGIS](https://www.nhgis.org) | `AC_to_county_zip.py` |
+| Core Based Statistical Areas | Metro / micro / not metro | CBSA | [Census TIGER/Line](https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html) | `Dataintegration_ACestimation.Rmd`, `ACprob_to_county_zip.py` |
+| Tract, ZCTA and block group boundaries (2000, 2010, 2015, 2020); 2020→2010 tract crosswalk | Boundaries | Tract, ZCTA, block group | [NHGIS](https://www.nhgis.org) | `ACprob_to_county_zip.py`, `UShouse.Rmd` |
+| Decennial Census / ACS housing units | Total housing units | Tract, county, block group, ZCTA | [U.S. Census Bureau](https://data.census.gov) (via `tidycensus`) | `UShouse.Rmd` |
 | American Housing Survey | AC prevalence (validation) | Metro / census division | [U.S. Census Bureau AHS](https://www.census.gov/programs-surveys/ahs.html) | `Comparison_analysis.py` |
 | ZTRAX (proprietary, exploratory only) | AC type | Property | Zillow Transaction and Assessment Database | `00.summary.py` |
 
-**NHGIS downloads:** NHGIS names each download with your own extract number (e.g. `nhgis0075_shapefile_tl2020_us_tract_2020`). Our tract extract was `nhgis0075` and our ZCTA extract was `nhgis0077`. Rename the folders in `AC_to_county_zip.py` to match your extract.
+**NHGIS downloads:** NHGIS names each download with your own extract number (e.g. `nhgis0075_shapefile_tl2020_us_tract_2020`). Our tract extract was `nhgis0075`, our ZCTA extract was `nhgis0077` and our block group extract was `nhgis0080`. Rename the folders in `ACprob_to_county_zip.py` to match your extract.
 
 
 ## Table of Contents
@@ -53,7 +55,7 @@ See Table 2 of the [paper](https://www.nature.com/articles/s41597-025-06104-3) f
   - [I. Data Preparation and Modeling](#i-data-preparation-and-modeling)
     - [Dewey_imputation.Rmd](#1-dewey_imputationrmd)
     - [Dataintegration_ACestimation.Rmd](#2-dataintegration_acestimationrmd)
-    - [Yes_ACesimtation.py](#3-yes_acesimtationpy)
+    - [Yes_ACesimtation_HPC.py](#3-yes_acesimtation_hpcpy)
     - [Alltype_ACesimtation_HPC_predict.py](#4-alltype_acesimtation_hpc_predictpy)
   - [II. Validation](#ii-validation)
     - [Comparison_analysis.py](#1-comparison_analysispy)
@@ -61,7 +63,8 @@ See Table 2 of the [paper](https://www.nature.com/articles/s41597-025-06104-3) f
     - [sudo_rural_urban_ACmap.Rmd](#1-sudo_rural_urban_acmaprmd)
     - [ResultACmapping.py](#2-resultacmappingpy)
   - [IV. Data Creation](#iv-data-creation)
-    - [AC_to_county_zip.py](#1-ac_to_county_zippy)
+    - [ACprob_to_county_zip.py](#1-acprob_to_county_zippy)
+    - [UShouse.Rmd](#2-ushousermd)
   - [V. Exploratory Analysis](#v-exploratory-analysis)
     - [00.summary.py](#1-00summarypy)
 
@@ -105,7 +108,7 @@ See the [Data Sources](#data-sources) table. The file names expected for each in
 
 ---
 
-### 3. `Yes_ACesimtation.py`
+### 3. `Yes_ACesimtation_HPC.py`
 **Purpose**:  
 Executes the machine learning model to estimate the type of AC for properties recorded only as "YES" (AC present, type unknown) across the U.S., optimized for high-performance computing (HPC) environments.
 
@@ -122,7 +125,7 @@ Executes the machine learning model to estimate the type of AC for properties re
 `allcombined_for_contemporal_prediction.csv` (output of `Dataintegration_ACestimation.Rmd`)
 
 **Output**:  
-- `YesAC_predict_result.csv` (predictions)
+- `yes_ac_predict_result.csv` (predictions)
 - Accuracy and tuning results (`.csv`, `.png`)
 - SHAP values (for model interpretation)
 
@@ -137,13 +140,15 @@ Generalized version of the estimation script to predict all types of air conditi
 - Includes additional features such as year-built, building condition, and local climate metrics
 
 **Dependencies**:
-Same as `Yes_ACesimtation.py`
+Same as `Yes_ACesimtation_HPC.py`
 
 **Input**:  
-`allcombined_for_contemporal_prediction.csv` and `YesAC_predict_result.csv`
+`allcombined_for_contemporal_prediction.csv`, `yes_ac_predict_result.csv`, and `cityruralindex_2020.csv` (tract-level urban/rural index used to report accuracy separately for urban and rural tracts)
 
 **Output**:  
-`alltype_ac_predict_result.csv`, along with diagnostics and SHAP values.
+- `alltype_ac_predict_result.csv` (predicted AC type for every property)
+- `prediction_probabilities.csv` (predicted probability of each AC type, used for the uncertainty layer)
+- Accuracy reports overall and by urban/rural, and a confusion matrix
 
 
 ## II. Validation 
@@ -169,12 +174,19 @@ Script for generating final AC mapping visualizations. It:
 - Utilizes libraries like `geopandas`, `matplotlib`, and `contextily`
 
 ## IV. Data creation
-### 1. `AC_to_county_zip.py`
+### 1. `ACprob_to_county_zip.py`
 A data processing utility that:
-- Maps estimated AC prevalence from properties to census tracts, ZIP Code Tabulation Areas (ZCTAs), counties and metro areas
+- Maps estimated AC prevalence from properties to census tracts, ZIP Code Tabulation Areas (ZCTAs), block groups, counties and metro areas
 - Performs spatial joins and weighted aggregation
 - Includes support for custom shapefiles and weighting schemes
-- Uses NHGIS tract and ZCTA boundary shapefiles (see [Data Sources](#data-sources))
+- Uses NHGIS tract, ZCTA and block group boundary shapefiles (see [Data Sources](#data-sources))
+
+### 2. `UShouse.Rmd`
+An R Markdown document that adjusts the predicted AC counts to match Census housing-unit totals. It:
+- Downloads total housing units by tract, county and block group with `tidycensus` (requires a [Census API key](https://api.census.gov/data/key_signup.html))
+- Uses the NHGIS 2020→2010 tract crosswalk to align housing units with 2010 tract boundaries
+- Proportionally scales the predicted counts so they do not exceed the number of housing units in each tract, county, block group and ZCTA
+- Requires `tidycensus` and `tidyverse`
 
 ## V. Exploratory analysis
 ### 1. `00.summary.py`

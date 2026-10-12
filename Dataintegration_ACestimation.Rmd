@@ -7,7 +7,7 @@ editor_options:
 ---
 
 <!--
-Purpose: build the property-level modeling table used by Yes_ACesimtation.py
+Purpose: build the property-level modeling table used by Yes_ACesimtation_HPC.py
 and Alltype_ACesimtation_HPC_predict.py.
 
 Working directory: an .Rmd file uses the folder it lives in as the working
@@ -24,7 +24,7 @@ Inputs (see "Data sources" in README.md for links):
   7. BUPR_tract.csv                     - tract-level built-up property records (HISDAC-US BUPR)
   8. HRS2020_tract.csv                  - tract-level Historic Redlining Score (2020 tracts)
 Final output:
-  allcombined_for_contemporal_prediction.csv - input for Yes_ACesimtation.py
+  allcombined_for_contemporal_prediction.csv - input for Yes_ACesimtation_HPC.py
 -->
 
 ```{r}
@@ -169,7 +169,7 @@ finaldf <- merge(Residf_dt, Red_dt, by = c("GEOID", "GEOIDCN"), all.x = TRUE)
 finaldf<- as.data.frame(finaldf)
 finaldf <- finaldf %>%
   mutate(Metorlevel = replace_na(Metorlevel, "NotMetro"))
-# Final modeling table; this is the input read by Yes_ACesimtation.py and
+# Final modeling table; this is the input read by Yes_ACesimtation_HPC.py and
 # Alltype_ACesimtation_HPC_predict.py.
 write.csv(finaldf, "./allcombined_for_contemporal_prediction.csv", row.names=F)
 
