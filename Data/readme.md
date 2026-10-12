@@ -64,3 +64,14 @@ Yoonjung Ahn
 Department of Geography & Atmospheric Science
 University of Kansas
 yoonjung.ahn@ku.edu
+
+
+# 3. County cooling degree days (Allcombine.csv)
+Annual cooling degree days (CDDs) for counties in the continental United States, 1970-2024, downloaded from NOAA NCEI Climate at a Glance (https://www.ncei.noaa.gov/access/monitoring/climate-at-a-glance/county/time-series) and combined into one file. This is an input of Dataintegration_ACestimation.Rmd (only 2024 is used in the model).
+
+Data Fields:
+- GEOIDCN: The county FIPS code (5 digits). Note: District of Columbia is stored as 24511; Dataintegration_ACestimation.Rmd resets it to 11001.
+- Name: County name.
+- State: State name.
+- Value: Annual cooling degree days (degree F).
+- YEAR: Year.

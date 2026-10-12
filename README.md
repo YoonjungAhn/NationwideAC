@@ -10,7 +10,7 @@ New to XGBoost? The XGBoost documentation has a good [introduction to boosted tr
 ## Setup Instructions
 
 1. Update any file paths labeled as `"<your_path_here>"` in the scripts. A comment above each one describes the file expected there (content, source and file type).
-2. The R Markdown files (`.Rmd`) use the folder they are saved in as the working directory, so their input and output files are written as relative paths (e.g. `"./Allcombine.csv"`). Put the input files next to the `.Rmd` file or edit those relative paths.
+2. The R Markdown files (`.Rmd`) use the folder they are saved in as the working directory, so their input and output files are written as relative paths (e.g. `"./Data/Allcombine.csv"`). Put the input files next to the `.Rmd` file or edit those relative paths.
 3. Ensure the required R and Python packages are installed.
 4. Run each script in the order below if doing full pipeline analysis.
 
@@ -34,7 +34,7 @@ See Table 2 of the [paper](https://www.nature.com/articles/s41597-025-06104-3) f
 | Data | Variables used | Spatial unit | Source | Used in |
 |---|---|---|---|---|
 | Dewey property records (proprietary) | AC type, heating type, year built, renovation year, total rooms, condition, owner occupancy, location | Property | [Dewey](https://www.deweydata.io/) | `Dewey_imputation.Rmd`, `Dataintegration_ACestimation.Rmd` |
-| Cooling degree days (CDDs) | Annual CDDs | County | [NOAA NCEI Climate at a Glance](https://www.ncei.noaa.gov/access/monitoring/climate-at-a-glance/county/time-series) | `Dataintegration_ACestimation.Rmd` |
+| Cooling degree days (CDDs) | Annual CDDs, 1970–2024 (included as `Data/Allcombine.csv`) | County | [NOAA NCEI Climate at a Glance](https://www.ncei.noaa.gov/access/monitoring/climate-at-a-glance/county/time-series) | `Dataintegration_ACestimation.Rmd` |
 | American Community Survey 5-year estimates | Median income, % Black, % Hispanic, % higher education | Census tract | [U.S. Census Bureau](https://www.census.gov/programs-surveys/acs) (via [`tidycensus`](https://walker-data.com/tidycensus/)) | `Dataintegration_ACestimation.Rmd` |
 | Built-up property records (BUPR) | BUPR | Census tract | [HISDAC-US](https://dataverse.harvard.edu/dataverse/hisdacus) | `Dataintegration_ACestimation.Rmd` |
 | Historic Redlining Score | HRI2020 | Census tract (2020) | [openICPSR](https://www.openicpsr.org/openicpsr/project/141121) | `Dataintegration_ACestimation.Rmd` |

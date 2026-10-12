@@ -19,7 +19,7 @@ Inputs (see "Data sources" in README.md for links):
   2. Dewey_imputed.csv                  - imputed Dewey attributes, output of Dewey_imputation.Rmd
   3. tl_2020_us_cbsa.shp                - Census TIGER/Line 2020 Core Based Statistical Area (metro/micro) shapefile
   4. US_tract_2020.shp                  - 2020 census tract shapefile (NHGIS / Census TIGER/Line)
-  5. Allcombine.csv                    - county cooling degree days, 1970-2024 (NOAA Climate at a Glance)
+  5. Data/Allcombine.csv               - county cooling degree days, 1970-2024 (NOAA Climate at a Glance; included in this repository)
   6. census2020_tract.csv               - tract-level ACS 5-year socio-demographic variables
   7. BUPR_tract.csv                     - tract-level built-up property records (HISDAC-US BUPR)
   8. HRS2020_tract.csv                  - tract-level Historic Redlining Score (2020 tracts)
@@ -107,10 +107,10 @@ boundary <- get_acs(
 # combine all the data for contemporal time periods
 ```{r}
 # County-level annual cooling degree days (CSV), 1970-2024, from NOAA NCEI Climate at a Glance
-# (county time series, "Cooling Degree Days"), combined into one file.
+# (county time series, "Cooling Degree Days"), combined into one file. Included in Data/.
 # Columns: GEOIDCN (5-digit county FIPS), Name, State, Value (CDDs), YEAR.
 # District of Columbia is stored with an incorrect GEOIDCN, so it is reset to 11001 below.
-cdddf <- read.csv( "./Allcombine.csv")%>%filter(YEAR == 2024)%>%
+cdddf <- read.csv( "./Data/Allcombine.csv")%>%filter(YEAR == 2024)%>%
   mutate(GEOIDCN = ifelse(Name == "District of Columbia", '11001', GEOIDCN))%>%dplyr::select(c("Value","YEAR", "GEOIDCN"))
 cdddf$GEOIDCN<-  sprintf("%05s", cdddf$GEOIDCN)
 # Tract-level ACS 5-year socio-demographic variables (CSV) with GEOID, CountyName, State,
