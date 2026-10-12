@@ -24,14 +24,15 @@ from joblib import Parallel, delayed
 import pickle
 import multiprocessing
 
+# Set the working directory to the folder that holds the input CSVs below
 os.chdir("<your_path_here>")
-# Os.chdir("<your_path_here>")
 
 
-predictdf =pd.read_csv("<your_path_here>")
-predictdf = pd.read_csv("<your_path_here>")
+# YES AC predictions: output of Yes_ACesimtation.py (needs PROPID and Yespredicted)
+predictdf = pd.read_csv("./YesAC_predict_result.csv")
 predictdf =predictdf [['PROPID','Yespredicted']]
 
+# Property-level modeling table: output of Dataintegration_ACestimation.Rmd
 df = pd.read_csv('./allcombined_for_contemporal_prediction.csv',  na_values=[''])
 df = df.loc[~df['STATE'].isin(['AK', 'HI', 'PR'])]
 df['YEARBUILT'] = round(df['YEARBUILT'])
@@ -63,7 +64,7 @@ df['REHEATTYPE'].unique()
 # DF = Df.copy()
 
 
-# Encording the data
+# Encoding the data
 label_encoder_air = LabelEncoder()
 label_encoder_heat = LabelEncoder()
 
@@ -297,7 +298,9 @@ df['final_prediction'] = original_predictions
 df['finalAIRCONDITIONINGpre'] = label_encoder_air.inverse_transform(df['final_prediction'])
 
 
-df.to_csv("<your_path_here>", index= False)
+# Property-level results with the predicted AC type (column "finalAIRCONDITIONINGpre").
+# This file is the input of AC_to_county_zip.py.
+df.to_csv("./alltype_ac_predict_result.csv", index= False)
 
 
 

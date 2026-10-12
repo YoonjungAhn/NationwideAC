@@ -24,11 +24,13 @@ from joblib import Parallel, delayed
 import pickle
 import multiprocessing
 
+# Set the working directory to the folder that holds the input CSV below
 os.chdir("<your_path_here>")
-os.chdir("<your_path_here>")
 
 
 
+# Property-level modeling table: output of Dataintegration_ACestimation.Rmd
+# (written at the end of that file).
 df = pd.read_csv('./allcombined_for_contemporal_prediction.csv',  na_values=[''])
 df = df.loc[~df['STATE'].isin(['AK', 'HI', 'PR'])]
 df['YEARBUILT'] = round(df['YEARBUILT'])
@@ -44,7 +46,9 @@ plt.show()
 
 
 #predicting YES AC
-df = pd.read_csv("<your_path_here>",  na_values=[''])
+# Reload the same modeling table (allcombined_for_contemporal_prediction.csv
+# from Dataintegration_ACestimation.Rmd) to start from unmodified data
+df = pd.read_csv("./allcombined_for_contemporal_prediction.csv",  na_values=[''])
 df['AIRCONDITIONINGrecode'].unique()
 df['REHEATTYPE'].unique()
 #DF = df.copy()
@@ -56,7 +60,7 @@ df['AIRCONDITIONINGrecode'] = df['AIRCONDITIONINGrecode'].replace("Yes",np.nan)
 # Remove rows where AIRCONDITIONINGrecode is NA
 df = df[(df['AIRCONDITIONINGrecode'] != 'NoAC') & (df['AIRCONDITIONINGrecode'].notna())]
 
-#encording the data
+#encoding the data
 label_encoder_air = LabelEncoder()
 label_encoder_heat = LabelEncoder()
 
@@ -269,7 +273,9 @@ accuracy_df = pd.DataFrame({'Original_Accuracy': [original_accuracy]})
 # Save the DataFrame to a CSV file
 accuracy_df.to_csv('./original_accuracy_results.csv', index=False)
 
-df.to_csv("<your_path_here>", index= False)
+# Property-level results with the predicted YES AC type (column "Yespredicted").
+# This file is the first input of Alltype_ACesimtation_HPC_predict.py.
+df.to_csv("./YesAC_predict_result.csv", index= False)
 
 # Here i am trying by state level
 

@@ -6,6 +6,23 @@ Created on Thu Feb 20 09:47:28 2025
 @author: y943a214
 """
 
+"""
+Input files
+-----------
+1. alltype_ac_predict_result.csv : property-level AC predictions, the output of
+   Alltype_ACesimtation_HPC_predict.py.
+2. Boundary shapefiles (.shp) for census tracts and ZIP Code Tabulation Areas
+   (ZCTAs), 2000/2010/2015/2020. These were downloaded from NHGIS
+   (IPUMS National Historical Geographic Information System,
+   https://www.nhgis.org) -> "GIS Files" -> select the tract or ZCTA layer and
+   the year. NHGIS names every download "nhgisXXXX_..." with your own
+   extract number (ours were nhgis0075 for tracts and nhgis0077 for ZCTAs), so
+   rename the folders below to match your extract.
+   Census TIGER/Line or cartographic boundary files (https://www.census.gov/geographies/mapping-files.html)
+   also work as long as they include a GEOID / GEOID10 column.
+3. cb_2020_us_state_500k.shp : Census cartographic boundary file for states.
+"""
+
 import pandas as pd
 import geopandas as gpd
 import os
@@ -36,6 +53,8 @@ DF.rename(columns={'New_AIRCONDITIONINGrecode': 'ACtype'}, inplace=True)
 
 
 # Define The directory names where the shapefiles will be stored
+# NHGIS tract shapefile folders (one per boundary year), relative to working_directory.
+# Replace "nhgis0075" with your own NHGIS extract number (see note at the top of this file).
 directories = [
     'boundary/nhgis0075_shapefile_tl2000_us_tract_2000',
     'boundary/nhgis0075_shapefile_tl2010_us_tract_2010',
@@ -146,6 +165,8 @@ def process_shapefiles(directory):
 working_directory = "<your_path_here>"
 os.chdir(working_directory)
 
+# NHGIS tract shapefile folders (one per boundary year), relative to working_directory.
+# Replace "nhgis0075" with your own NHGIS extract number (see note at the top of this file).
 directories = [
     'boundary/nhgis0075_shapefile_tl2000_us_tract_2000/',
     'boundary/nhgis0075_shapefile_tl2010_us_tract_2010/',
@@ -243,6 +264,8 @@ def process_shapefiles(directory):
 working_directory = "<your_path_here>"
 os.chdir(working_directory)
 
+# NHGIS ZCTA shapefile folders (one per boundary year), relative to working_directory.
+# Replace "nhgis0077" with your own NHGIS extract number (see note at the top of this file).
 directories = [
     'boundary/nhgis0077_shapefile_tl2000_us_zcta_2000/',
     'boundary/nhgis0077_shapefile_tl2010_us_zcta_2010/',
@@ -343,6 +366,8 @@ def process_shapefiles(directory):
 working_directory = "<your_path_here>"
 os.chdir(working_directory)
 
+# NHGIS ZCTA shapefile folders (one per boundary year), relative to working_directory.
+# Replace "nhgis0077" with your own NHGIS extract number (see note at the top of this file).
 directories = [
     # 'boundary/nhgis0077_shapefile_tl2000_us_zcta_2000/',
     'boundary/2015_us_cbsa/',

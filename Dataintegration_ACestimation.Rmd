@@ -6,6 +6,27 @@ editor_options:
   chunk_output_type: console
 ---
 
+<!--
+Purpose: build the property-level modeling table used by Yes_ACesimtation.py
+and Alltype_ACesimtation_HPC_predict.py.
+
+Working directory: an .Rmd file uses the folder it lives in as the working
+directory, so all input/output files below are given as paths relative to
+this file. Put the input files next to this .Rmd (or edit the relative paths).
+
+Inputs (see "Data sources" in README.md for links):
+  1. Dewey_selected_data.csv            - Dewey property records (proprietary), one row per property
+  2. Dewey_imputed.csv                  - imputed Dewey attributes, output of Dewey_imputation.Rmd
+  3. tl_2020_us_cbsa.shp                - Census TIGER/Line 2020 Core Based Statistical Area (metro/micro) shapefile
+  4. US_tract_2020.shp                  - 2020 census tract shapefile (NHGIS / Census TIGER/Line)
+  5. county_CDD.csv                     - county cooling degree days (NOAA Climate at a Glance)
+  6. census2020_tract.csv               - tract-level ACS 5-year socio-demographic variables
+  7. BUPR_tract.csv                     - tract-level built-up property records (HISDAC-US BUPR)
+  8. HRS2020_tract.csv                  - tract-level Historic Redlining Score (2020 tracts)
+Final output:
+  allcombined_for_contemporal_prediction.csv - input for Yes_ACesimtation.py
+-->
+
 ```{r}
 library(dplyr)
 library(tidyr)
@@ -17,7 +38,9 @@ library(sf)
 
 # combine dewey data
 ```{r}
-df<- fread("<your_path_here>")
+# Raw Dewey property records (CSV). Must include LAT, LON, FIPS, PROPID,
+# AIRCONDITIONINGCODE, CNSSTRACT, ZIPCODE, COUNTY and STATE.
+df<- fread("./Dewey_selected_data.csv")
 acdf <- df%>%dplyr::select(c("LAT","LON","FIPS","PROPID","AIRCONDITIONINGCODE","CNSSTRACT","ZIPCODE","COUNTY", "STATE"))
 
 acdf<- acdf %>%
@@ -39,21 +62,27 @@ acdf<- acdf %>%
     TRUE ~ as.character(AIRCONDITIONINGCODE) # for any other unexpected values
   ))
 rm(df)
-imputedf <- read.csv("<your_path_here>")
+# Imputed Dewey attributes (CSV) produced by Dewey_imputation.Rmd
+# (category and numeric imputed values joined by PROPID).
+imputedf <- read.csv("./Dewey_imputed.csv")
 
 #merge with acdf
 DF <- merge(acdf, imputedf, all.y=TRUE, by =c("PROPID"))
 residf <-DF%>%filter(Classification == "Residential-Owned")
-write.csv(residf, "<your_path_here>", row.names=F)
+# Save residential owner-occupied properties; read back further below.
+write.csv(residf, "./Dewey_residential_owned.csv", row.names=F)
 ```
 
 #boundary
 ```{r}
-metro<- st_read("<your_path_here>")
+# Core Based Statistical Area boundaries (shapefile, .shp), e.g. Census TIGER/Line tl_2020_us_cbsa.
+# Keep the .shp together with its .shx/.dbf/.prj files.
+metro<- st_read("./boundary/tl_2020_us_cbsa/tl_2020_us_cbsa.shp")
 metro <- metro %>%
   dplyr::rename(CBSA_GEOID = GEOID)%>%select(CBSA_GEOID,NAME,LSAD)
 
-tract <- st_read("<your_path_here>")%>%select(GEOID)
+# 2020 census tract boundaries (shapefile, .shp) with a GEOID column (NHGIS or Census TIGER/Line).
+tract <- st_read("./boundary/US_tract_2020/US_tract_2020.shp")%>%select(GEOID)
 
 joined_data <- st_join(tract , metro, join = st_intersects)
 censusmetro<-joined_data %>%
@@ -75,12 +104,15 @@ boundary <- get_acs(
 
 ```
 
-# combine all the data for comtemporal time peridos
+# combine all the data for contemporal time periods
 ```{r}
-cdddf <- read.csv( "<your_path_here>")%>%filter(YEAR == 2024)%>%
+# County-level annual cooling degree days (CSV) with Name, YEAR, Value, GEOIDCN (5-digit county FIPS).
+cdddf <- read.csv( "./county_CDD.csv")%>%filter(YEAR == 2024)%>%
   mutate(GEOIDCN = ifelse(Name == "District of Columbia", '11001', GEOIDCN))%>%dplyr::select(c("Value","YEAR", "GEOIDCN"))
 cdddf$GEOIDCN<-  sprintf("%05s", cdddf$GEOIDCN)
-census2020 <- read.csv("<your_path_here>")#%>%filter(year == 2021)
+# Tract-level ACS 5-year socio-demographic variables (CSV) with GEOID, CountyName, State,
+# median_income, prop_Black, prop_All_Spanish, prop_HigherEdu, ...
+census2020 <- read.csv("./census2020_tract.csv")#%>%filter(year == 2021)
 
 #combine the CDD and census
 DF <- merge(boundary, cdddf, by.x = 'GEOID', by.y ='GEOIDCN', all.x=TRUE )%>% dplyr::rename(GEOIDCN=GEOID )
@@ -88,7 +120,8 @@ DFall <- merge(census2020, DF, by.x = c("CountyName","State"), by.y = c("Name", 
 DFall$GEOID<- sprintf("%011s", DFall$GEOID)
 
 #combine with BUPR
-BUPR <- read.csv("<your_path_here>")
+# Tract-level built-up property records (CSV) from HISDAC-US, with STATE, COUNTY, GEOID, BUPR.
+BUPR <- read.csv("./BUPR_tract.csv")
 BUPR$STATE<- sprintf("%02d", BUPR$STATE)
 BUPR$COUNTY <- sprintf("%03d", BUPR$COUNTY)
 BUPR$GEOID<- as.character(BUPR$GEOID)
@@ -97,22 +130,25 @@ BUPR$GEOID<- sprintf("%011s", BUPR$GEOID)
 result <- merge( DFall,BUPR, by = c("GEOID"), all.x =TRUE)
 
 #combine with redlining
-red<- read.csv("<your_path_here>")%>% dplyr::rename(GEOID=GEOID20 )
+# Tract-level Historic Redlining Score for 2020 tracts (CSV) with GEOID20, HRI2020.
+red<- read.csv("./HRS2020_tract.csv")%>% dplyr::rename(GEOID=GEOID20 )
 red$GEOID<- sprintf("%011s", red$GEOID)
 
 Red <- merge(result, red, by = c("GEOID"), all.x =TRUE)%>%dplyr::select(-c("INTERVAL2020", "METRO_NAME", "YEAR","Year", "geometry"))%>% dplyr::rename(CDDs=Value )%>%filter(State != "Puerto Rico" & State != "Alaska" & State != "Hawaii")
 Red <- left_join(Red, censusmetro)
 #
-#write.csv(Red,"<your_path_here>",row.names = FALSE)
+#write.csv(Red,"./tract_covariates.csv",row.names = FALSE)
 #combine with resident
 library(readr)
-Red <- read_csv("<your_path_here>")%>%select(-c("Tract","State","CountyName", "Black", "Hispanic","total_population", "total_house","year", "Poverty","RenterOccupied", "HigherEdu","STATE","COUNTY", "CBSA10","STATEFP","COUNTYFP","TRACTCE","GISJOIN" ,"CBSA_GEOID"))
+# Tract-level covariate table (CSV) saved above, joined with residential housing-unit counts.
+Red <- read_csv("./tract_covariates.csv")%>%select(-c("Tract","State","CountyName", "Black", "Hispanic","total_population", "total_house","year", "Poverty","RenterOccupied", "HigherEdu","STATE","COUNTY", "CBSA10","STATEFP","COUNTYFP","TRACTCE","GISJOIN" ,"CBSA_GEOID"))
 Red$GEOIDCN<- sprintf("%05s",as.character(Red$GEOIDCN))
 Red$GEOID<- sprintf("%011s",as.character(Red$GEOID))
 
 
 
-residf <- read.csv("<your_path_here>")
+# Residential owner-occupied Dewey properties written in the first chunk.
+residf <- read.csv("./Dewey_residential_owned.csv")
 residf$AIRCONDITIONINGrecode<- recode(residf$AIRCONDITIONINGrecode,"None"="NoAC")
 residf$REHEATTYPE<- recode(residf$REHEATTYPE,"None"="Noheater")
 
@@ -133,7 +169,9 @@ finaldf <- merge(Residf_dt, Red_dt, by = c("GEOID", "GEOIDCN"), all.x = TRUE)
 finaldf<- as.data.frame(finaldf)
 finaldf <- finaldf %>%
   mutate(Metorlevel = replace_na(Metorlevel, "NotMetro"))
-write.csv(finaldf, "<your_path_here>", row.names=F)
+# Final modeling table; this is the input read by Yes_ACesimtation.py and
+# Alltype_ACesimtation_HPC_predict.py.
+write.csv(finaldf, "./allcombined_for_contemporal_prediction.csv", row.names=F)
 
 
 ```
